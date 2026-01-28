@@ -6,7 +6,6 @@ use hex::ToHex as _;
 use humansize::{format_size, BINARY};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use std::io::Write;
 use std::{
     collections::HashMap,
     future::Future,
@@ -56,24 +55,20 @@ use crate::versions::{
     types::{VersionBackend, VersionFile},
 };
 
-pub trait CloseWriter {
-    fn close(self);
-}
-
-pub async fn generate_manifest_rusty_v2<P, T, V, F, W, CloseF>(
+pub async fn generate_manifest_rusty_v2<P, LogFn, ProgFn, FactoryFn, Writer, CloseFn>(
     dir: P,
-    progress_sfn: V,
-    log_sfn: T,
-    factory: F,
-    closer: CloseF,
+    progress_sfn: ProgFn,
+    log_sfn: LogFn,
+    factory: FactoryFn,
+    closer: CloseFn,
 ) -> anyhow::Result<Manifest>
 where
     P: AsRef<Path>,
-    T: Fn(String),
-    V: Fn(f32),
-    W: AsyncWrite + Unpin,
-    F: AsyncFn(String) -> W,
-    CloseF: AsyncFn(W),
+    LogFn: Fn(String),
+    ProgFn: Fn(f32),
+    Writer: AsyncWrite + Unpin,
+    FactoryFn: AsyncFn(String) -> Writer,
+    CloseFn: AsyncFn(Writer),
 {
     let mut backend = create_backend_constructor(dir).ok_or(anyhow!(
         "Could not create backend for path. Is this structure supported?"
@@ -83,13 +78,13 @@ where
 
     log_sfn("organising files into chunks...".to_string());
 
-    let chunks = organise_files_v2(files, backend.require_whole_files());
+    let chunks = organise_files(files, backend.require_whole_files());
 
     log_sfn(format!(
         "organized into {} chunks, generating checksums...",
         chunks.len()
     ));
-    let manifest = read_chunks(backend, chunks, factory, closer).await?;
+    let manifest = read_chunks_and_generate_manifest(backend, chunks, progress_sfn, log_sfn, factory, closer).await?;
 
     let mut key = [0u8; 16];
     getrandom::fill(&mut key).map_err(|err| anyhow!("failed to generate key: {:?}", err))?;
@@ -107,7 +102,7 @@ where
     })
 }
 
-fn organise_files_v2(
+fn organise_files(
     files: Vec<VersionFile>,
     require_whole_files: bool,
 ) -> Vec<Vec<(VersionFile, u64, u64)>> {
@@ -167,16 +162,18 @@ fn organise_files_v2(
     chunks
 }
 
-async fn read_chunks<W, F, CloseF>(
+async fn read_chunks_and_generate_manifest<LogFn, ProgFn, FactoryFn, Writer, CloseFn>(
     backend: Box<dyn VersionBackend + Send + Sync>,
     chunks: Vec<Vec<(VersionFile, u64, u64)>>,
-    factory: F,
-    closer: CloseF,
+    progress_sfn: ProgFn,
+    log_sfn: LogFn,
+    factory: FactoryFn,
+    closer: CloseFn,
 ) -> anyhow::Result<HashMap<String, ChunkData>>
 where
-    W: AsyncWrite + Unpin,
-    F: AsyncFn(String) -> W,
-    CloseF: AsyncFn(W),
+    Writer: AsyncWrite + Unpin,
+    FactoryFn: AsyncFn(String) -> Writer,
+    CloseFn: AsyncFn(Writer),
 {
     let backend = Arc::new(sync::nonpoison::Mutex::new(backend));
 
@@ -221,17 +218,17 @@ where
     let results = stream.try_collect().await;
     results
 }
-async fn read_and_generate_chunk_file_data<W>(
+async fn read_and_generate_chunk_file_data<Writer>(
     backend: Arc<sync::nonpoison::Mutex<Box<dyn VersionBackend + Sync + Send>>>,
     file: &VersionFile,
     start: u64,
     length: u64,
     hasher: &mut Sha256,
     read_buf: &mut [u8],
-    writer: &mut W,
+    writer: &mut Writer,
 ) -> anyhow::Result<FileEntry>
 where
-    W: AsyncWrite + Unpin,
+    Writer: AsyncWrite + Unpin,
 {
     let mut reader = {
         let mut backend_lock = backend.lock();

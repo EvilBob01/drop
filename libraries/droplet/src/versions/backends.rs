@@ -185,7 +185,7 @@ impl VersionBackend for ZipVersionBackend {
             let version_file = VersionFile {
                 relative_filename: name.to_string(),
                 permission: 0o744,
-                size: size,
+                size,
             };
 
             results.push(version_file);

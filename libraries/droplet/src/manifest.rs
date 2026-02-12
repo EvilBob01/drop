@@ -17,6 +17,7 @@ use std::{
     },
 };
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWrite},
     join,
@@ -60,6 +61,7 @@ pub async fn generate_manifest_rusty_v2<P, LogFn, ProgFn, FactoryFn, Writer, Clo
     log_sfn: LogFn,
     factory: FactoryFn,
     closer: CloseFn,
+    semaphore: Option<&Semaphore>,
 ) -> anyhow::Result<Manifest>
 where
     P: AsRef<Path>,
@@ -83,9 +85,16 @@ where
         "organized into {} chunks, generating checksums...",
         chunks.len()
     ));
-    let manifest =
-        read_chunks_and_generate_manifest(backend, chunks, progress_sfn, log_sfn, factory, closer)
-            .await?;
+    let manifest = read_chunks_and_generate_manifest(
+        backend,
+        chunks,
+        progress_sfn,
+        log_sfn,
+        factory,
+        closer,
+        semaphore,
+    )
+    .await?;
 
     let mut key = [0u8; 16];
     getrandom::fill(&mut key).map_err(|err| anyhow!("failed to generate key: {:?}", err))?;
@@ -170,6 +179,7 @@ async fn read_chunks_and_generate_manifest<LogFn, ProgFn, FactoryFn, Writer, Clo
     log_sfn: LogFn,
     factory: FactoryFn,
     closer: CloseFn,
+    semaphore: Option<&Semaphore>,
 ) -> anyhow::Result<HashMap<String, ChunkData>>
 where
     LogFn: Fn(String),
@@ -197,6 +207,11 @@ where
         };
         let mut writer = (factory)(uuid.clone()).await;
         for (file, start, length) in chunk {
+            let permit = if let Some(semaphore) = &semaphore {
+                Some(semaphore.acquire().await?)
+            } else {
+                None
+            };
             chunk_data.files.push(
                 read_and_generate_chunk_file_data(
                     backend.clone(),
@@ -209,6 +224,7 @@ where
                 )
                 .await?,
             );
+            drop(permit);
         }
         (closer)(writer).await;
 
@@ -261,6 +277,7 @@ pub async fn generate_manifest_rusty<T: Fn(String), V: Fn(f32)>(
     dir: &Path,
     progress_sfn: V,
     log_sfn: T,
+    reader_semaphore: Option<&Semaphore>,
 ) -> anyhow::Result<Manifest> {
     let mut backend =
         create_backend_constructor(dir).ok_or(anyhow!("Could not create backend for path."))?()?;
@@ -268,7 +285,7 @@ pub async fn generate_manifest_rusty<T: Fn(String), V: Fn(f32)>(
     let required_single_file = backend.require_whole_files();
 
     let mut files = backend.list_files().await?;
-    files.sort_by(|a, b| b.size.cmp(&a.size));
+    files.sort_by_key(|b| std::cmp::Reverse(b.size));
     // Filepath to chunk data
     let mut chunks: Vec<Vec<(VersionFile, u64, u64)>> = Vec::new();
     let mut current_chunk: Vec<(VersionFile, u64, u64)> = Vec::new();
@@ -321,7 +338,7 @@ pub async fn generate_manifest_rusty<T: Fn(String), V: Fn(f32)>(
             // Fill up current chunk
             let remaining = CHUNK_SIZE - current_size;
             current_chunk.push((version_file.clone(), 0, remaining));
-            chunks.push(std::mem::replace(&mut current_chunk, Vec::new()));
+            chunks.push(std::mem::take(&mut current_chunk));
 
             // This is our offset in our current file
             let mut offset = remaining;
@@ -377,6 +394,12 @@ pub async fn generate_manifest_rusty<T: Fn(String), V: Fn(f32)>(
             let mut chunk_length = 0;
 
             for (file, start, length) in chunk {
+                let permit = if let Some(reader_semaphore) = &reader_semaphore {
+                    Some(reader_semaphore.acquire().await?)
+                } else {
+                    None
+                };
+
                 let mut reader = {
                     let mut backend_lock = backend.lock().await;
                     let reader = backend_lock.reader(&file, start, start + length).await?;
@@ -399,6 +422,8 @@ pub async fn generate_manifest_rusty<T: Fn(String), V: Fn(f32)>(
                     length: length.try_into().unwrap(),
                     permissions: file.permission,
                 });
+
+                drop(permit);
             }
 
             send_log

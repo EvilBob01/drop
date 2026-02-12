@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Error};
-use futures::future::{join_all, try_join_all};
 use futures::stream::TryStreamExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 use hex::ToHex as _;
@@ -84,7 +83,9 @@ where
         "organized into {} chunks, generating checksums...",
         chunks.len()
     ));
-    let manifest = read_chunks_and_generate_manifest(backend, chunks, progress_sfn, log_sfn, factory, closer).await?;
+    let manifest =
+        read_chunks_and_generate_manifest(backend, chunks, progress_sfn, log_sfn, factory, closer)
+            .await?;
 
     let mut key = [0u8; 16];
     getrandom::fill(&mut key).map_err(|err| anyhow!("failed to generate key: {:?}", err))?;
@@ -171,6 +172,8 @@ async fn read_chunks_and_generate_manifest<LogFn, ProgFn, FactoryFn, Writer, Clo
     closer: CloseFn,
 ) -> anyhow::Result<HashMap<String, ChunkData>>
 where
+    LogFn: Fn(String),
+    ProgFn: Fn(f32),
     Writer: AsyncWrite + Unpin,
     FactoryFn: AsyncFn(String) -> Writer,
     CloseFn: AsyncFn(Writer),

@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Error};
-use futures::stream::TryStreamExt;
 use futures::{stream::FuturesUnordered, StreamExt};
 use hex::ToHex as _;
 use humansize::{format_size, BINARY};
@@ -65,11 +64,11 @@ pub async fn generate_manifest_rusty_v2<P, LogFn, ProgFn, FactoryFn, Writer, Clo
 ) -> anyhow::Result<Manifest>
 where
     P: AsRef<Path>,
-    LogFn: Fn(String),
+    LogFn: Fn(String) + Clone,
     ProgFn: Fn(f32),
     Writer: AsyncWrite + Unpin,
-    FactoryFn: AsyncFn(String) -> Writer,
-    CloseFn: AsyncFn(Writer),
+    FactoryFn: AsyncFn(String) -> Writer + Clone,
+    CloseFn: AsyncFn(Writer) + Clone,
 {
     let mut backend = create_backend_constructor(dir).ok_or(anyhow!(
         "Could not create backend for path. Is this structure supported?"
@@ -182,60 +181,82 @@ async fn read_chunks_and_generate_manifest<LogFn, ProgFn, FactoryFn, Writer, Clo
     semaphore: Option<&Semaphore>,
 ) -> anyhow::Result<HashMap<String, ChunkData>>
 where
-    LogFn: Fn(String),
+    LogFn: Fn(String) + Clone,
     ProgFn: Fn(f32),
     Writer: AsyncWrite + Unpin,
-    FactoryFn: AsyncFn(String) -> Writer,
-    CloseFn: AsyncFn(Writer),
+    FactoryFn: AsyncFn(String) -> Writer + Clone,
+    CloseFn: AsyncFn(Writer) + Clone,
 {
     let backend = Arc::new(sync::nonpoison::Mutex::new(backend));
+    let total_chunk_count = chunks.len();
 
-    let futures = chunks.into_iter().enumerate().map(|(index, chunk)| async {
+    let futures = chunks.into_iter().enumerate().map(|(index, chunk)| {
+        // To make the borrow checker happy
         let backend = backend.clone();
+        let factory = factory.clone();
+        let log_sfn = log_sfn.clone();
+        let closer = closer.clone();
+        async move {
+            let mut read_buf = vec![0; 1024 * 1024 * 64];
 
-        let mut read_buf = vec![0; 1024 * 1024 * 64];
+            let uuid = uuid::Uuid::new_v4().to_string();
+            let mut hasher = Sha256::new();
 
-        let uuid = uuid::Uuid::new_v4().to_string();
-        let mut hasher = Sha256::new();
-
-        let mut iv = [0u8; 16];
-        getrandom::fill(&mut iv).map_err(|err| anyhow!("failed to generate IV: {:?}", err))?;
-        let mut chunk_data = ChunkData {
-            files: Vec::new(),
-            checksum: String::new(),
-            iv,
-        };
-        let mut writer = (factory)(uuid.clone()).await;
-        for (file, start, length) in chunk {
-            let permit = if let Some(semaphore) = &semaphore {
-                Some(semaphore.acquire().await?)
-            } else {
-                None
+            let mut iv = [0u8; 16];
+            getrandom::fill(&mut iv).map_err(|err| anyhow!("failed to generate IV: {:?}", err))?;
+            let mut chunk_data = ChunkData {
+                files: Vec::new(),
+                checksum: String::new(),
+                iv,
             };
-            chunk_data.files.push(
-                read_and_generate_chunk_file_data(
-                    backend.clone(),
-                    &file,
-                    start,
+            let mut writer = (factory)(uuid.clone()).await;
+            for (file, start, length) in chunk {
+                let permit = if let Some(semaphore) = &semaphore {
+                    Some(semaphore.acquire().await?)
+                } else {
+                    None
+                };
+                chunk_data.files.push(
+                    read_and_generate_chunk_file_data(
+                        backend.clone(),
+                        &file,
+                        start,
+                        length,
+                        &mut hasher,
+                        &mut read_buf,
+                        &mut writer,
+                    )
+                    .await?,
+                );
+                log_sfn(format!(
+                    "created chunk of size {} ({}b) from {} files (index {})",
+                    format_size(length, BINARY),
                     length,
-                    &mut hasher,
-                    &mut read_buf,
-                    &mut writer,
-                )
-                .await?,
-            );
-            drop(permit);
+                    chunk_data.files.len(),
+                    index
+                ));
+                drop(permit);
+            }
+            (closer)(writer).await;
+
+            let hash: String = hasher.finalize().encode_hex();
+            chunk_data.checksum = hash;
+
+            Ok::<_, anyhow::Error>((uuid, chunk_data))
         }
-        (closer)(writer).await;
-
-        let hash: String = hasher.finalize().encode_hex();
-        chunk_data.checksum = hash;
-
-        Ok((uuid, chunk_data))
     });
-    let stream = futures::stream::iter(futures).buffer_unordered(4);
-    let results = stream.try_collect().await;
-    results
+    let mut stream = futures::stream::iter(futures)
+        .buffer_unordered(4)
+        .enumerate();
+    let mut results = HashMap::new();
+    let mut current_progress = 0f32;
+    while let Some((_, res)) = stream.next().await {
+        let (id, data) = res?;
+        current_progress += 1.0;
+        progress_sfn((current_progress / total_chunk_count as f32) * 100.0f32);
+        results.insert(id, data);
+    }
+    Ok(results)
 }
 async fn read_and_generate_chunk_file_data<Writer>(
     backend: Arc<sync::nonpoison::Mutex<Box<dyn VersionBackend + Sync + Send>>>,

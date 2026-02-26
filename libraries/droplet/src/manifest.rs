@@ -237,7 +237,7 @@ where
         }
     });
     let mut stream = futures::stream::iter(futures)
-        .buffer_unordered(4)
+        .buffer_unordered(semaphore.map(|s| s.available_permits()).unwrap_or(4))
         .enumerate();
     let mut results = HashMap::new();
     let mut current_progress = 0f32;

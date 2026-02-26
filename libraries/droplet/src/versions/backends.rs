@@ -54,7 +54,10 @@ impl VersionBackend for PathVersionBackend {
                 self.peek_file(
                     relative
                         .to_str()
-                        .ok_or(anyhow!("Could not parse path: {}", relative.to_string_lossy()))?
+                        .ok_or(anyhow!(
+                            "Could not parse path: {}",
+                            relative.to_string_lossy()
+                        ))?
                         .to_owned(),
                 )
                 .await?,

@@ -14,7 +14,6 @@ pub struct VersionFile {
 pub trait MinimumFileObject: AsyncRead + Send + Unpin {}
 impl<T: AsyncRead + Send + Unpin> MinimumFileObject for T {}
 
-
 #[async_trait]
 pub trait VersionBackend: DynClone {
     fn require_whole_files(&self) -> bool;

@@ -17,6 +17,8 @@ pub async fn main() {
         |message| {
             println!("{}", message);
         },
+        |_| async { tokio::io::sink() },
+        |_| async { () },
         None,
     )
     .await

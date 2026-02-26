@@ -1,5 +1,6 @@
 use rcgen::{
-    CertificateParams, DistinguishedName, Error, IsCa, KeyPair, KeyUsagePurpose, PublicKeyData, SubjectPublicKeyInfo
+    CertificateParams, DistinguishedName, Error, IsCa, KeyPair, KeyUsagePurpose, PublicKeyData,
+    SubjectPublicKeyInfo,
 };
 use ring::rand::SystemRandom;
 use ring::signature::{EcdsaKeyPair, VerificationAlgorithm};
@@ -42,8 +43,7 @@ pub fn generate_client_certificate(
     root_ca: String,
     root_ca_private: String,
 ) -> Result<Vec<String>, rcgen::Error> {
-    let root_key_pair =
-        KeyPair::from_pem(&root_ca_private)?;
+    let root_key_pair = KeyPair::from_pem(&root_ca_private)?;
     let certificate_params = CertificateParams::from_ca_cert_pem(&root_ca)?;
     let root_ca = CertificateParams::self_signed(certificate_params, &root_key_pair)?;
 

@@ -4,12 +4,7 @@ use hex::ToHex as _;
 use humansize::{format_size, BINARY};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use std::{
-    collections::HashMap,
-    ops::Not,
-    path::Path,
-    sync::{self, Arc},
-};
+use std::{collections::HashMap, ops::Not, path::Path, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncReadExt as _, AsyncWrite};
 use tokio::sync::Semaphore;
@@ -79,9 +74,9 @@ where
         backend,
         chunks,
         progress_sfn,
-        log_sfn,
-        factory,
-        closer,
+        &log_sfn,
+        &factory,
+        &closer,
         semaphore,
     )
     .await?;
@@ -116,7 +111,7 @@ fn organise_files(
         }
         let current_chunk_size = current_chunk
             .iter()
-            .map(|(_, _, length)| length)
+            .map(|(_, _, length)| *length)
             .sum::<u64>();
         let version_file_size = version_file.size;
 
@@ -140,11 +135,12 @@ fn organise_files(
                 continue;
             }
 
-            let remaining = CHUNK_SIZE - current_chunk_size;
-            current_chunk.push((version_file.clone(), 0, remaining));
+            let bytes_free_in_existing_chunk = CHUNK_SIZE - current_chunk_size;
+            current_chunk.push((version_file.clone(), 0, bytes_free_in_existing_chunk));
+            chunks.push(std::mem::take(&mut current_chunk));
 
             // Loop over remaining data and create sufficient chunks to use it
-            let mut offset = remaining;
+            let mut offset = bytes_free_in_existing_chunk;
             while offset < version_file_size {
                 let length = CHUNK_SIZE.min(version_file_size - offset);
                 if length == CHUNK_SIZE {
@@ -166,27 +162,24 @@ async fn read_chunks_and_generate_manifest<LogFn, ProgFn, FactoryFn, Writer, Clo
     backend: Box<dyn VersionBackend + Send + Sync>,
     chunks: Vec<Vec<(VersionFile, u64, u64)>>,
     progress_sfn: ProgFn,
-    log_sfn: LogFn,
-    factory: FactoryFn,
-    closer: CloseFn,
+    log_sfn: &LogFn,
+    factory: &FactoryFn,
+    closer: &CloseFn,
     semaphore: Option<&Semaphore>,
 ) -> anyhow::Result<HashMap<String, ChunkData>>
 where
-    LogFn: Fn(String) + Clone,
+    LogFn: Fn(String),
     ProgFn: Fn(f32),
     Writer: AsyncWrite + Unpin,
-    FactoryFn: AsyncFn(String) -> Writer + Clone,
-    CloseFn: AsyncFn(Writer) + Clone,
+    FactoryFn: AsyncFn(String) -> Writer,
+    CloseFn: AsyncFn(Writer),
 {
-    let backend = Arc::new(sync::nonpoison::Mutex::new(backend));
+    let backend = Arc::new(tokio::sync::Mutex::new(backend));
     let total_chunk_count = chunks.len();
 
     let futures = chunks.into_iter().enumerate().map(|(index, chunk)| {
         // To make the borrow checker happy
         let backend = backend.clone();
-        let factory = factory.clone();
-        let log_sfn = log_sfn.clone();
-        let closer = closer.clone();
         async move {
             let mut read_buf = vec![0; 1024 * 1024 * 64];
 
@@ -200,6 +193,7 @@ where
                 checksum: String::new(),
                 iv,
             };
+            let mut chunk_length = 0u64;
             let mut writer = (factory)(uuid.clone()).await;
             for (file, start, length) in chunk {
                 let permit = if let Some(semaphore) = &semaphore {
@@ -219,19 +213,21 @@ where
                     )
                     .await?,
                 );
-                log_sfn(format!(
-                    "created chunk of size {} ({}b) from {} files (index {})",
-                    format_size(length, BINARY),
-                    length,
-                    chunk_data.files.len(),
-                    index
-                ));
+                chunk_length += length;
                 drop(permit);
             }
             (closer)(writer).await;
 
             let hash: String = hasher.finalize().encode_hex();
             chunk_data.checksum = hash;
+
+            log_sfn(format!(
+                "created chunk of size {} ({}b) from {} files (index {})",
+                format_size(chunk_length, BINARY),
+                chunk_length,
+                chunk_data.files.len(),
+                index
+            ));
 
             Ok::<_, anyhow::Error>((uuid, chunk_data))
         }
@@ -250,7 +246,7 @@ where
     Ok(results)
 }
 async fn read_and_generate_chunk_file_data<Writer>(
-    backend: Arc<sync::nonpoison::Mutex<Box<dyn VersionBackend + Sync + Send>>>,
+    backend: Arc<tokio::sync::Mutex<Box<dyn VersionBackend + Sync + Send>>>,
     file: &VersionFile,
     start: u64,
     length: u64,
@@ -262,7 +258,7 @@ where
     Writer: AsyncWrite + Unpin,
 {
     let mut reader = {
-        let mut backend_lock = backend.lock();
+        let mut backend_lock = backend.lock().await;
         let reader = backend_lock.reader(file, start, start + length).await?;
         reader
     };

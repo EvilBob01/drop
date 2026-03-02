@@ -6,6 +6,10 @@ pub mod file_utils;
 pub mod manifest;
 pub mod ssl;
 pub mod versions;
+pub mod manifest;
+pub mod vm;
+
+extern crate libarchive_drop;
 
 pub use manifest::{CHUNK_SIZE, MAX_FILE_COUNT};
 

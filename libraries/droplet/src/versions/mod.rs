@@ -1,15 +1,37 @@
-use std::path::Path;
+use std::{
+    fs::{metadata, read_dir},
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 
 use crate::versions::{
-    backends::{
-        PathVersionBackend, ZipVersionBackend, SEVEN_ZIP_INSTALLED, SUPPORTED_FILE_EXTENSIONS,
-    },
-    types::VersionBackend,
+    archive_backend::ZipVersionBackend, path_backend::PathVersionBackend, types::VersionBackend,
 };
 
-pub mod backends;
+pub mod archive_backend;
+pub mod path_backend;
+
+pub fn _list_files(vec: &mut Vec<PathBuf>, path: &Path) -> Result<()> {
+    if metadata(path)?.is_dir() {
+        let paths = read_dir(path)?;
+        for path_result in paths {
+            let full_path = path_result?.path();
+            if metadata(&full_path)?.is_dir() {
+                _list_files(vec, &full_path)?;
+            } else {
+                vec.push(full_path);
+            }
+        }
+    };
+
+    Ok(())
+}
+
+const SUPPORTED_FILE_EXTENSIONS: [&'static str; 11] = [
+    "tar", "pax", "cpio", "zip", "jar", "ar", "xar", "rar", "rpm", "7z", "iso",
+];
+
 pub mod types;
 pub fn create_backend_constructor<'a, P>(
     path: P,
@@ -30,25 +52,17 @@ where
         }));
     };
 
-    if *SEVEN_ZIP_INSTALLED {
-        /*
-        Slow 7zip integrity test
-        let mut test = Command::new("7z");
-        test.args(vec!["t", path.to_str().expect("invalid utf path")]);
-        let status = test.status().ok()?;
-        if status.code().unwrap_or(1) == 0 {
-            let buf = path.to_path_buf();
-            return Some(Box::new(move || Ok(Box::new(ZipVersionBackend::new(buf)?))));
-        }
-         */
-        // Fast filename-based test
-        if let Some(extension) = path.extension().and_then(|v| v.to_str()) {
-            let supported = SUPPORTED_FILE_EXTENSIONS.iter().any(|v| **v == *extension);
-            if supported {
-                let buf = path.to_path_buf();
-                return Some(Box::new(move || Ok(Box::new(ZipVersionBackend::new(buf)?))));
-            }
-        }
+    let file_extension = path
+        .extension()
+        .map(|v| v.to_str())
+        .flatten()?;
+
+    if SUPPORTED_FILE_EXTENSIONS
+        .iter()
+        .any(|v| *v == file_extension)
+    {
+        let buf = path.to_path_buf();
+        return Some(Box::new(move || Ok(Box::new(ZipVersionBackend::new(buf)?))));
     }
 
     None

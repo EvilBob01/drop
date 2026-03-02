@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Not, path::Path, sync::Arc};
+use std::{collections::HashMap, ops::Not, path::Path};
 
 use anyhow::anyhow;
 use futures::StreamExt;
@@ -72,7 +72,7 @@ where
         chunks.len()
     ));
     let manifest = read_chunks_and_generate_manifest(
-        backend,
+        backend.as_ref(),
         chunks,
         progress_sfn,
         &log_sfn,
@@ -167,7 +167,7 @@ fn organise_files(
 }
 
 async fn read_chunks_and_generate_manifest<LogFn, ProgFn, FactoryFn, Writer, CloseFn>(
-    backend: Box<dyn VersionBackend + Send + Sync>,
+    backend: &(dyn VersionBackend + Send + Sync),
     chunks: Vec<Vec<(VersionFile, u64, u64)>>,
     progress_sfn: ProgFn,
     log_sfn: &LogFn,
@@ -182,12 +182,10 @@ where
     FactoryFn: AsyncFn(String) -> Writer,
     CloseFn: AsyncFn(Writer),
 {
-    let backend = Arc::new(tokio::sync::Mutex::new(backend));
     let total_chunk_count = chunks.len();
 
     let futures = chunks.into_iter().enumerate().map(|(index, chunk)| {
         // To make the borrow checker happy
-        let backend = backend.clone();
         async move {
             let mut read_buf = vec![0; 1024 * 1024 * 64];
 
@@ -211,7 +209,7 @@ where
                 };
                 chunk_data.files.push(
                     read_and_generate_chunk_file_data(
-                        backend.clone(),
+                        backend,
                         &file,
                         start,
                         length,
@@ -254,7 +252,7 @@ where
     Ok(results)
 }
 async fn read_and_generate_chunk_file_data<Writer>(
-    backend: Arc<tokio::sync::Mutex<Box<dyn VersionBackend + Sync + Send>>>,
+    backend: &(dyn VersionBackend + Sync + Send),
     file: &VersionFile,
     start: u64,
     length: u64,
@@ -265,11 +263,7 @@ async fn read_and_generate_chunk_file_data<Writer>(
 where
     Writer: AsyncWrite + Unpin,
 {
-    let mut reader = {
-        let backend_lock = backend.lock().await;
-        let reader = backend_lock.reader(file, start, start + length).await?;
-        reader
-    };
+    let mut reader = backend.reader(file, start, start + length).await?;
 
     loop {
         let amount = reader.read(read_buf).await?;

@@ -24,6 +24,7 @@ pub async fn main() {
     .await
     .unwrap();
 
+
     return;
 
     // Sanity checks

@@ -1,9 +1,6 @@
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::{
-    io::SeekFrom,
-    path::PathBuf,
-};
+use std::{io::SeekFrom, path::PathBuf};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -17,7 +14,10 @@ pub struct PathVersionBackend {
     pub base_dir: PathBuf,
 }
 
-use crate::versions::{_list_files, types::{MinimumFileObject, VersionBackend, VersionFile}};
+use crate::versions::{
+    _list_files,
+    types::{MinimumFileObject, VersionBackend, VersionFile},
+};
 
 #[async_trait]
 impl VersionBackend for PathVersionBackend {
@@ -34,7 +34,10 @@ impl VersionBackend for PathVersionBackend {
                 self.peek_file(
                     relative
                         .to_str()
-                        .ok_or(anyhow!("Could not parse path: {}", relative.to_string_lossy()))?
+                        .ok_or(anyhow!(
+                            "Could not parse path: {}",
+                            relative.to_string_lossy()
+                        ))?
                         .to_owned(),
                 )
                 .await?,

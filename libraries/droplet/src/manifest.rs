@@ -1,22 +1,11 @@
-use std::{
-    collections::HashMap,
-    future::Future,
-    mem,
-    path::Path,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-};
+use std::{collections::HashMap, ops::Not, path::Path, sync::Arc};
 
-use anyhow::anyhow;
 use anyhow::anyhow;
 use futures::StreamExt;
 use hex::ToHex as _;
 use humansize::{format_size, BINARY};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use std::{collections::HashMap, ops::Not, path::Path, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncReadExt as _, AsyncWrite};
 use tokio::sync::Semaphore;
@@ -51,10 +40,6 @@ use crate::versions::{
     create_backend_constructor,
     types::{VersionBackend, VersionFile},
 };
-use crate::versions::{
-    create_backend_constructor,
-    types::{VersionBackend, VersionFile},
-};
 
 pub async fn generate_manifest_rusty<P, LogFn, ProgFn, FactoryFn, Writer, CloseFn>(
     dir: P,
@@ -72,7 +57,7 @@ where
     FactoryFn: AsyncFn(String) -> Writer + Clone,
     CloseFn: AsyncFn(Writer) + Clone,
 {
-    let mut backend = create_backend_constructor(dir).ok_or(anyhow!(
+    let backend = create_backend_constructor(dir).ok_or(anyhow!(
         "Could not create backend for path. Is this structure supported?"
     ))?()?;
     let mut files = backend.list_files().await?;
@@ -124,6 +109,7 @@ fn organise_files(
         if current_chunk.len() >= MAX_FILE_COUNT {
             // Pop current chunk
             chunks.push(std::mem::take(&mut current_chunk));
+            println!("Chunks: {}", chunks.len());
         }
         let current_chunk_size = current_chunk
             .iter()
@@ -136,6 +122,7 @@ fn organise_files(
             // it to the current_chunk. Just push it by itself
             if version_file_size >= CHUNK_SIZE {
                 chunks.push(vec![(version_file, 0, version_file_size)]);
+                println!("Chunks: {}", chunks.len());
                 continue;
             }
 
@@ -143,6 +130,7 @@ fn organise_files(
             if current_chunk_size + version_file_size >= CHUNK_SIZE {
                 // Pop current chunk
                 chunks.push(std::mem::take(&mut current_chunk));
+                println!("Chunks: {}", chunks.len());
             }
         } else {
             // Enough space for it to be put in immediately
@@ -161,8 +149,10 @@ fn organise_files(
                 let length = CHUNK_SIZE.min(version_file_size - offset);
                 if length == CHUNK_SIZE {
                     chunks.push(vec![(version_file.clone(), offset, length)]);
+                    println!("Chunks: {}", chunks.len());
                 } else {
                     current_chunk.push((version_file.clone(), offset, length));
+                    println!("Chunks: {}", chunks.len());
                 }
                 offset += length;
             }
@@ -170,7 +160,9 @@ fn organise_files(
     }
     if current_chunk.is_empty().not() {
         chunks.push(current_chunk);
+        println!("Pushed final chunk: {}", chunks.len());
     }
+    println!("Chunks: {}", chunks.len());
     chunks
 }
 
@@ -274,7 +266,7 @@ where
     Writer: AsyncWrite + Unpin,
 {
     let mut reader = {
-        let mut backend_lock = backend.lock().await;
+        let backend_lock = backend.lock().await;
         let reader = backend_lock.reader(file, start, start + length).await?;
         reader
     };

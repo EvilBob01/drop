@@ -52,10 +52,7 @@ where
         }));
     };
 
-    let file_extension = path
-        .extension()
-        .map(|v| v.to_str())
-        .flatten()?;
+    let file_extension = path.extension().map(|v| v.to_str()).flatten()?;
 
     if SUPPORTED_FILE_EXTENSIONS
         .iter()

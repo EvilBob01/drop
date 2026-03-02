@@ -1,6 +1,7 @@
 use std::{collections::HashMap, ops::Not, path::Path};
 
 use anyhow::anyhow;
+use async_trait::async_trait;
 use futures::StreamExt;
 use hex::ToHex as _;
 use humansize::{format_size, BINARY};
@@ -41,12 +42,18 @@ use crate::versions::{
     types::{VersionBackend, VersionFile},
 };
 
-pub async fn generate_manifest_rusty<P, LogFn, ProgFn, FactoryFn, Writer, CloseFn>(
+#[async_trait]
+pub trait ManifestWriterFactory {
+    type Writer: AsyncWrite + Unpin;
+    async fn create(&self, id: String) -> anyhow::Result<Self::Writer>;
+    async fn close(&self, writer: Self::Writer) -> anyhow::Result<()>;
+}
+
+pub async fn generate_manifest_rusty<P, LogFn, ProgFn, Writer>(
     dir: P,
     progress_sfn: ProgFn,
     log_sfn: LogFn,
-    factory: FactoryFn,
-    closer: CloseFn,
+    factory: Option<&dyn ManifestWriterFactory<Writer = Writer>>,
     semaphore: Option<&Semaphore>,
 ) -> anyhow::Result<Manifest>
 where
@@ -54,8 +61,6 @@ where
     LogFn: Fn(String) + Clone,
     ProgFn: Fn(f32),
     Writer: AsyncWrite + Unpin,
-    FactoryFn: AsyncFn(String) -> Writer + Clone,
-    CloseFn: AsyncFn(Writer) + Clone,
 {
     let backend = create_backend_constructor(dir).ok_or(anyhow!(
         "Could not create backend for path. Is this structure supported?"
@@ -76,8 +81,7 @@ where
         chunks,
         progress_sfn,
         &log_sfn,
-        &factory,
-        &closer,
+        factory,
         semaphore,
     )
     .await?;
@@ -166,21 +170,18 @@ fn organise_files(
     chunks
 }
 
-async fn read_chunks_and_generate_manifest<LogFn, ProgFn, FactoryFn, Writer, CloseFn>(
+async fn read_chunks_and_generate_manifest<LogFn, ProgFn, Writer>(
     backend: &(dyn VersionBackend + Send + Sync),
     chunks: Vec<Vec<(VersionFile, u64, u64)>>,
     progress_sfn: ProgFn,
     log_sfn: &LogFn,
-    factory: &FactoryFn,
-    closer: &CloseFn,
+    factory: Option<&dyn ManifestWriterFactory<Writer = Writer>>,
     semaphore: Option<&Semaphore>,
 ) -> anyhow::Result<HashMap<String, ChunkData>>
 where
     LogFn: Fn(String),
     ProgFn: Fn(f32),
     Writer: AsyncWrite + Unpin,
-    FactoryFn: AsyncFn(String) -> Writer,
-    CloseFn: AsyncFn(Writer),
 {
     let total_chunk_count = chunks.len();
 
@@ -200,7 +201,10 @@ where
                 iv,
             };
             let mut chunk_length = 0u64;
-            let mut writer = (factory)(uuid.clone()).await;
+            let mut writer = match factory {
+                Some(factory) => Some(factory.create(uuid.clone()).await?),
+                None => None,
+            };
             for (file, start, length) in chunk {
                 let permit = if let Some(semaphore) = &semaphore {
                     Some(semaphore.acquire().await?)
@@ -222,8 +226,9 @@ where
                 chunk_length += length;
                 drop(permit);
             }
-            (closer)(writer).await;
-
+            if let Some(factory) = factory {
+                factory.close(writer.expect("Failed to get writer")).await?;
+            }
             let hash: String = hasher.finalize().encode_hex();
             chunk_data.checksum = hash;
 
@@ -258,7 +263,7 @@ async fn read_and_generate_chunk_file_data<Writer>(
     length: u64,
     hasher: &mut Sha256,
     read_buf: &mut [u8],
-    writer: &mut Writer,
+    writer: &mut Option<Writer>,
 ) -> anyhow::Result<FileEntry>
 where
     Writer: AsyncWrite + Unpin,
@@ -271,7 +276,9 @@ where
         if amount == 0 {
             break;
         }
-        writer.write_all(&read_buf[0..amount]).await?;
+        if let Some(writer) = writer.as_mut() {
+            writer.write_all(&read_buf[0..amount]).await?;
+        }
         hasher.update(&read_buf[0..amount]);
     }
 

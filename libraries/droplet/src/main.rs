@@ -1,7 +1,20 @@
 use std::{env, os::unix::fs::MetadataExt, path::PathBuf};
 
-use droplet_rs::manifest::generate_manifest_rusty;
+use droplet_rs::manifest::{ManifestWriterFactory, generate_manifest_rusty};
 use tokio::runtime::Handle;
+
+struct SinkFactory {}
+#[async_trait::async_trait]
+impl ManifestWriterFactory for SinkFactory {
+    type Writer = tokio::io::Sink;
+    async fn create(&self, _id: String) -> anyhow::Result<Self::Writer> {
+        Ok(tokio::io::sink())
+    }
+
+    async fn close(&self, _writer: Self::Writer) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 #[tokio::main]
 pub async fn main() {
@@ -17,8 +30,7 @@ pub async fn main() {
         |message| {
             println!("{}", message);
         },
-        |_| async { tokio::io::sink() },
-        |_| async { () },
+        Some(&SinkFactory {}),
         None,
     )
     .await

@@ -1,6 +1,2 @@
 include:
-  - local: "torrential/.gitlab-ci.yml"
-    rules:
-      - changes:
-          paths:
-            - torrential
+  - "torrential/.gitlab-ci.yml"

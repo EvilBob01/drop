@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use droplet_rs::manifest::{
-    Manifest, generate_manifest_rusty, generate_manifest_rusty_v2,
+    Manifest, generate_manifest_rusty,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
@@ -52,14 +52,14 @@ where
             .unwrap(),
     );
 
-    generate_manifest_rusty_v2(
+    generate_manifest_rusty(
         dir,
         |progress| {
             let progress_int = (progress * 100f32).round() as u64;
             progress_bar.set_position(progress_int);
         },
         |log| progress_bar.suspend(|| info!("{}", log)),
-        factory,
+        Some(&factory),
         closer
     )
     .await

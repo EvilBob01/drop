@@ -1,3 +1,5 @@
+#![feature(async_fn_traits)]
+
 use crate::commands::connect::config::manage_configuration;
 use crate::{
     cli::{Cli, Commands},

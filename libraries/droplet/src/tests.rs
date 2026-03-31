@@ -23,6 +23,7 @@ fn manifest_gen(resource: &str) {
                 println!("({}) {}", filepath.display(), message);
             },
             None,
+            None,
         )
         .await
         .unwrap_or_else(|err| {

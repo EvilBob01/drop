@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     cli::UploadInfo,
     commands::connect::{config::Config, config_option::ConfigOption},
-    manifest::{CompressionOption, DepotManifest, generate_v2_manifest},
+    manifest::{ClosureFactory, CompressionOption, DepotManifest, generate_v2_manifest},
     operator_builder::OperatorBuilder,
 };
 use futures::AsyncWriteExt;
@@ -12,13 +12,13 @@ use opendal::{FuturesAsyncWriter, Operator};
 use tokio_util::compat::{Compat, FuturesAsyncWriteCompatExt};
 
 pub async fn upload(
-    info: &UploadInfo,
+    upload_info: &UploadInfo,
     config: Config,
     name: &Option<String>,
 ) -> anyhow::Result<()> {
-    let game_id = &info.game_id;
-    let path = &info.path;
-    let version_id = &info.version_id;
+    let game_id = upload_info.game_id.clone();
+    let path = upload_info.path.clone();
+    let version_id = upload_info.version_id.clone();
 
     let operator = get_operator(config, name)?;
 
@@ -27,28 +27,30 @@ pub async fn upload(
     info!("Uploading chunks");
 
     let v2_manifest = generate_v2_manifest(
-        Path::new(path),
-        async |id: String| {
-            info!("Uploading chunk id {id}");
-            let writer = operator
-                .writer(&format!("{game_id}/{version_id}/{id}"))
-                .await
-                .unwrap()
-                .into_futures_async_write()
-                .compat_write();
-            writer
-        },
-        |writer: Compat<FuturesAsyncWriter>| async {
-            writer.into_inner().close().await.unwrap();
-        },
+        Path::new(&path),
+        ClosureFactory::new(
+            async move |id: String| {
+                info!("Uploading chunk id {id}");
+                let writer = operator
+                    .writer(&format!("{game_id}/{version_id}/{id}"))
+                    .await
+                    .unwrap()
+                    .into_futures_async_write()
+                    .compat_write();
+                writer
+            },
+            |writer: Compat<FuturesAsyncWriter>| async {
+                writer.into_inner().close().await.unwrap();
+            },
+        ),
     )
     .await?;
 
     info!("Finished uploading chunks");
 
     existing_depot_manifest.append(
-        game_id.to_string(),
-        version_id.to_string(),
+        upload_info.game_id.to_string(),
+        upload_info.version_id.to_string(),
         CompressionOption::None,
     );
     Ok(())

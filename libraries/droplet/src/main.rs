@@ -35,5 +35,4 @@ pub async fn main() {
     )
     .await
     .unwrap();
-
 }

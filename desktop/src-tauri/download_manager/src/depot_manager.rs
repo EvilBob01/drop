@@ -1,7 +1,9 @@
 use std::{
     collections::HashMap,
+    env,
     sync::RwLock,
-    time::{Duration, Instant}, usize,
+    time::{Duration, Instant},
+    usize,
 };
 
 use futures_util::StreamExt;
@@ -34,7 +36,7 @@ struct Depot {
     manifest: Option<DepotManifest>,
     latest_speed: Option<usize>, // bytes per second
     current_downloads: SyncSemaphore,
-    enabled: bool
+    enabled: bool,
 }
 
 pub struct DepotManager {
@@ -113,10 +115,16 @@ impl DepotManager {
         for depot in &mut new_depots {
             if let Err(sync_error) = self.sync_depot(depot).await {
                 warn!("failed to sync depot {}: {:?}", depot.endpoint, sync_error);
-                depot.enabled = false;
+                if env::var("FORCE_ENABLE_DEPOTS")
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(false)
+                {
+                } else {
+                    depot.enabled = false;
+                }
             }
         }
-        
+
         let enabled = new_depots.iter().filter(|v| v.enabled).count();
         if enabled == 0 {
             return Err(RemoteAccessError::NoDepots);

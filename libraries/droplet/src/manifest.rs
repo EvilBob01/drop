@@ -43,7 +43,7 @@ use crate::versions::{
 };
 
 #[async_trait]
-pub trait ManifestWriterFactory {
+pub trait ManifestWriterFactory: Send + Sync {
     type Writer: AsyncWrite + Unpin;
     async fn create(&self, id: String) -> anyhow::Result<Self::Writer>;
     async fn close(&self, writer: Self::Writer) -> anyhow::Result<()>;

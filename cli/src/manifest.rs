@@ -53,7 +53,7 @@ where
 impl<
     W: AsyncWrite + Unpin + Send + Sync,
     F: AsyncFn(String) -> W + Send + Sync + 'static,
-    C: AsyncFn(W) + Sync,
+    C: AsyncFn(W) + Send + Sync,
 > ManifestWriterFactory for ClosureFactory<W, F, C>
 where
     for<'a> F::CallRefFuture<'a>: Send,

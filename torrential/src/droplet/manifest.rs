@@ -3,10 +3,11 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+use droplet_rs::manifest::ManifestWriterFactory;
 use log::info;
 use protobuf::Message;
 use serde_json::json;
-use tokio::{spawn, sync::Semaphore};
+use tokio::{io::{BufWriter, SimplexStream}, spawn, sync::Semaphore};
 
 use crate::{
     proto::{
@@ -62,7 +63,8 @@ pub async fn generate_manifest_rpc(
                     .await;
             });
         },
-        Some(READER_SEMAPHORE.clone()),
+        None::<&dyn ManifestWriterFactory<Writer = SimplexStream>>, // Dummy type signature, not actually used
+        Some(&READER_SEMAPHORE),
     )
     .await?;
 

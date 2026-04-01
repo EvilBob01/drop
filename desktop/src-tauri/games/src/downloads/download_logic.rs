@@ -13,7 +13,7 @@ use download_manager::util::download_thread_control_flag::{
     DownloadThreadControl, DownloadThreadControlFlag,
 };
 use download_manager::util::progress_object::ProgressHandle;
-use droplet_rs::manifest::ChunkData;
+use droplet_types::ChunkData;
 use futures_util::StreamExt as _;
 use log::{debug, info};
 use remote::auth::generate_authorization_header;

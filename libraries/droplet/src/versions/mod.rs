@@ -5,10 +5,11 @@ use std::{
 
 use anyhow::Result;
 
-use crate::versions::{
-    archive_backend::ZipVersionBackend, path_backend::PathVersionBackend, types::VersionBackend,
-};
+use crate::versions::{path_backend::PathVersionBackend, types::VersionBackend};
 
+use crate::versions::archive_backend::ZipVersionBackend;
+
+// libarchive backend is Linux-only for now
 pub mod archive_backend;
 pub mod path_backend;
 
@@ -53,7 +54,6 @@ where
     };
 
     let file_extension = path.extension().map(|v| v.to_str()).flatten()?;
-
     if SUPPORTED_FILE_EXTENSIONS.contains(&file_extension) {
         let buf = path.to_path_buf();
         return Some(Box::new(move || Ok(Box::new(ZipVersionBackend::new(buf)?))));

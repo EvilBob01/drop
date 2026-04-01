@@ -11,7 +11,7 @@ use download_manager::util::download_thread_control_flag::{
     DownloadThreadControl, DownloadThreadControlFlag,
 };
 use download_manager::util::progress_object::{ProgressHandle, ProgressObject, ProgressType};
-use droplet_rs::manifest::{ChunkData, Manifest};
+use droplet_types::{ChunkData, Manifest};
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
 use log::{debug, error, info, warn};

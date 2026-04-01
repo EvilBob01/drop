@@ -8,8 +8,6 @@ pub mod ssl;
 pub mod versions;
 pub mod vm;
 
-extern crate libarchive_drop;
-
 pub use manifest::{CHUNK_SIZE, MAX_FILE_COUNT};
 
 #[cfg(test)]

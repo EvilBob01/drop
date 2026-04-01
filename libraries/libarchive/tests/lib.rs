@@ -1,10 +1,10 @@
-extern crate libarchive;
+extern crate libarchive_drop;
 
 pub mod util;
 
-use libarchive::archive::{self, ReadFilter, ReadFormat};
-use libarchive::reader::{self, Reader};
-use libarchive::writer;
+use libarchive_drop::archive::{self, ReadFilter, ReadFormat};
+use libarchive_drop::reader::{self, Reader};
+use libarchive_drop::writer;
 use std::fs::File;
 
 #[test]

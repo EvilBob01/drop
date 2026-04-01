@@ -1,3 +1,0 @@
-[submodule "libarchive-rust"]
-	path = libarchive-rust
-	url = https://github.com/Drop-OSS/libarchive-rust.git

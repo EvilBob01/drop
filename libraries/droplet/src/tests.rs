@@ -4,8 +4,9 @@ extern crate test_generator;
 use std::path::Path;
 
 use test_generator::test_resources;
+use tokio::io::SimplexStream;
 
-use crate::manifest::generate_manifest_rusty;
+use crate::manifest::{generate_manifest_rusty, ManifestWriterFactory};
 
 #[test_resources("testfiles/**/*.7z")]
 fn manifest_gen(resource: &str) {
@@ -22,7 +23,7 @@ fn manifest_gen(resource: &str) {
             |message| {
                 println!("({}) {}", filepath.display(), message);
             },
-            None,
+            None::<&dyn ManifestWriterFactory<Writer = SimplexStream>>, // Dummy type signature, not actually used
             None,
         )
         .await

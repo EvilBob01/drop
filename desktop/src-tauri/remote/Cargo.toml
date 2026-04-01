@@ -10,7 +10,6 @@ bytes = "1.11.0"
 chrono = "0.4.42"
 client = { path = "../client", version = "0.1.0" }
 database = { path = "../database", version = "0.1.0" }
-droplet-rs = "0.7.3"
 gethostname = "1.0.2"
 hex = "0.4.3"
 http = "1.3.1"

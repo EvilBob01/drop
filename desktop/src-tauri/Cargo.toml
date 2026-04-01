@@ -41,7 +41,6 @@ database = { path = "./database" } # database
 deranged = "=0.4.0"
 dirs = "6.0.0"
 download_manager = { path = "./download_manager", version = "0.1.0" } # download manager
-droplet-rs = "0.7.3"
 filetime = "0.2.25"
 futures-core = "0.3.31"
 futures-lite = "2.6.0"

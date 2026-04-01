@@ -590,6 +590,7 @@ version = "0.16.3"
 dependencies = [
  "anyhow",
  "async-trait",
+ "droplet_types",
  "dyn-clone",
  "futures",
  "getrandom 0.3.4",
@@ -607,6 +608,13 @@ dependencies = [
  "tokio",
  "uuid",
  "x509-parser 0.17.0",
+]
+
+[[package]]
+name = "droplet_types"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

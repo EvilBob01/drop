@@ -1,3 +1,7 @@
+const path = require('path');
+
+const dropbase = path.join(__dirname, "../../libraries/base")
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -7,7 +11,7 @@ export default {
     "./plugins/**/*.{js,ts}",
     "./app.vue",
     "./error.vue",
-    "../libs/drop-base/**/*.{js,vue,ts}",
+    `${dropbase}/components/**/*.{js,vue,ts}`,
   ],
   theme: {
     extend: {

@@ -36,7 +36,7 @@
         as="div"
         v-for="(nav, navIndex) in filteredNavigation"
         :key="nav.id"
-        :class="['first:pt-0 last:pb-0', nav.tools ? 'mt-auto' : '']"
+        :class="['first:pt-0 last:pb-0', nav.tools && !filteredNavigation[navIndex - 1].tools ? 'mt-auto' : '']"
         v-slot="{ open }"
         :default-open="nav.deft"
       >

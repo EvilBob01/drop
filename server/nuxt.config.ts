@@ -60,7 +60,7 @@ export default defineNuxtConfig({
       enabled: false,
     },
   },
-  css: ["~/assets/tailwindcss.css", "~/assets/core.scss"],
+  css: ["~/assets/generated.css", "~/assets/core.scss"],
 
   sourcemap: {
     server: true,
@@ -68,7 +68,7 @@ export default defineNuxtConfig({
   },
 
   experimental: {
-    buildCache: true,
+    buildCache: false,
     viewTransition: false,
     appManifest: false,
     componentIslands: true,
@@ -79,10 +79,7 @@ export default defineNuxtConfig({
   // },
 
   vite: {
-    plugins: [
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tailwindcss() as any,
-    ],
+    plugins: [],
   },
 
   runtimeConfig: {

@@ -7,6 +7,9 @@ export default {
     "./plugins/**/*.{js,ts}",
     "./app.vue",
     "./error.vue",
+    "../libraries/base/components/**/*.{js,vue,ts}",
+    "../libraries/base/composables/**/*.{js,ts}",
+    "../libraries/base/*.vue",
   ],
   theme: {
     extend: {

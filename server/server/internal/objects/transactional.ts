@@ -51,7 +51,7 @@ export class ObjectTransactionalHandler {
           id,
           () => {
             if (typeof data === "string") {
-              return $fetch<Readable>(data, { responseType: "stream" });
+              return $fetch<Readable>(data, { responseType: "stream", headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Referer": "https://www.pcgamingwiki.com/" } });
             }
             return (async () => data)();
           },

@@ -27,6 +27,11 @@ self-hosted deployment on Ducky (Proxmox, 96 GB RAM, 32 cores, voracity ZFS pool
   that prevented compilation on Rust nightly ≥ 2026-05-24
 - `server/.env` — `PORT=4000` (Nuxt), `TORRENTIAL_PATH=/usr/local/bin/torrential`
 
+### Fixed
+- `server/server/internal/objects/transactional.ts` — added browser `User-Agent`
+  and `Referer` headers to image proxy fetches; PCGamingWiki CDN was returning
+  403 Forbidden for server-side requests without a recognisable browser UA
+
 ### Infrastructure
 - Deployed as Proxmox LXC CT 108 (Debian 13, 6 GB RAM, 4 cores, 40 GB rootfs)
 - Library bind-mounted read-only: `/voracity/incoming/Done/Games` → `/library`

@@ -391,7 +391,7 @@ async function updateSelectedGame(value: number) {
 
   metadataResults.value = undefined;
   currentlySelectedMetadata.value = -1;
-  gameSearchTerm.value = option.game;
+  gameSearchTerm.value = option.normalizedName ?? option.game;
 
   await searchGame();
 }

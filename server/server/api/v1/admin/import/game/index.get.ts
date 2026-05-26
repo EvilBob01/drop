@@ -1,5 +1,6 @@
 import aclManager from "~/server/internal/acls";
 import libraryManager from "~/server/internal/library";
+import { normalizeGameName } from "~/server/internal/utils/gameNameNormalize";
 
 export default defineEventHandler(async (h3) => {
   const allowed = await aclManager.allowSystemACL(h3, ["import:game:read"]);
@@ -11,7 +12,11 @@ export default defineEventHandler(async (h3) => {
   );
   const iterableUnimportedGames = Object.entries(unimportedGames)
     .map(([libraryId, gameArray]) =>
-      gameArray.map((e) => ({ game: e, library: libraries[libraryId] })),
+      gameArray.map((e) => ({
+        game: e,
+        normalizedName: normalizeGameName(e),
+        library: libraries[libraryId],
+      })),
     )
     .flat();
   return { unimportedGames: iterableUnimportedGames };

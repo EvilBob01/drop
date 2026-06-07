@@ -276,6 +276,7 @@ export class MetadataHandler {
             mBannerObjectId: metadata.bannerId,
             mCoverObjectId: metadata.coverId,
             mImageLibraryObjectIds: metadata.images,
+            mImageCarouselObjectIds: metadata.images,
 
             publishers: {
               connect: metadata.publishers,

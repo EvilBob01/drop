@@ -1,6 +1,6 @@
 # Install Guide — Drop OSS (Native, No Docker)
 
-This guide documents the exact steps used to deploy Drop on **Ducky**
+This guide documents the exact steps used to deploy Drop on
 (Proxmox VE host, Debian 13 LXC container, no Docker). It is a reproducible
 reference for a clean rebuild from scratch.
 

@@ -7,9 +7,9 @@
 | PostgreSQL database | Proxmox host backup or pg_dump | ~50 MB | All game metadata, users, sessions |
 | Object storage (cover art) | `/opt/drop/src/drop/server/.data/` | ~2-8 GB | Re-downloadable from metadata providers |
 | Environment config | `/opt/drop/src/drop/server/.env` | tiny | Contains secrets — back up securely |
-| Game files | `/voracity/incoming/Done/Games` | ~5.9 TB | Source of truth — already on ZFS |
+| Game files | `/Games` | ~ALL The TB | Source of truth|
 
-The ZFS pool (`voracity`) should be snapshotted regularly at the Proxmox level.
+The ZFS pool (`poolname`) should be snapshotted regularly at the Proxmox level.
 The game files themselves are never modified by Drop.
 
 ---
@@ -43,7 +43,7 @@ saves the re-scraping time.
 Use Proxmox's built-in backup (vzdump) to snapshot the entire CT:
 
 ```bash
-vzdump 108 --storage local --compress zstd --mode snapshot
+vzdump contaner# --storage local --compress zstd --mode snapshot
 ```
 
 ---

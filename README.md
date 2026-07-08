@@ -94,10 +94,10 @@ The normaliser handles common repack naming conventions automatically:
 
 | Library folder | Search query sent to Steam |
 |---|---|
-| `A.Plague.Tale.Requiem.v1076-GOG` | `A Plague Tale Requiem` |
-| `Age of Empires IV [FitGirl Repack]` | `Age of Empires IV` |
-| `Above.Snakes-TENOKE` | `Above Snakes` |
-| `RimWorld.v1.4.3613-GOG` | `RimWorld` |
+| `A.Plague.Tale.Requiem.v1076` | `A Plague Tale Requiem` |
+| `Age of Empires IV [Repack]` | `Age of Empires IV` |
+| `Above.Snakes -stuff` | `Above Snakes` |
+| `RimWorld.v1.4.3613` | `RimWorld` |
 
 ---
 

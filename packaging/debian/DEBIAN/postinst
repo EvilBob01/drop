@@ -1,0 +1,42 @@
+#!/bin/bash
+set -e
+
+# Create system user if it doesn't exist
+if ! id -u drop &>/dev/null; then
+  useradd -r -m -d /opt/drop -s /bin/bash drop
+fi
+
+mkdir -p /opt/drop/logs
+chown -R drop:drop /opt/drop
+
+# Create fake cargo wrapper (intercepts Drop's dev-mode torrential detection)
+if [ ! -f /usr/local/bin/cargo ]; then
+  cat > /usr/local/bin/cargo << 'EOF'
+#!/bin/bash
+pkill -x torrential 2>/dev/null
+sleep 2
+exec /usr/local/bin/torrential
+EOF
+  chmod +x /usr/local/bin/cargo
+fi
+
+# Set up database if PostgreSQL is running
+if systemctl is-active --quiet postgresql; then
+  if ! sudo -u postgres psql -c '\du' | grep -q '^drop '; then
+    sudo -u postgres psql -c "CREATE USER drop WITH PASSWORD 'droppass';" || true
+    sudo -u postgres psql -c 'CREATE DATABASE drop OWNER drop;' || true
+    echo 'Database user and schema created. Change the password in /opt/drop/app/.env'
+  fi
+fi
+
+systemctl daemon-reload
+systemctl enable drop.service
+
+echo ''
+echo '========================================='
+echo ' Drop OSS installed.'
+echo ' Next steps:'
+echo '  1. Edit /opt/drop/app/.env (set DATABASE_URL, EXTERNAL_URL)'
+echo '  2. Run: systemctl start drop'
+echo '  3. Open http://localhost:3000 to complete setup'
+echo '========================================='

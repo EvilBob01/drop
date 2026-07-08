@@ -1,0 +1,21 @@
+[Unit]
+Description=Drop OSS Game Library Server
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=drop
+Group=drop
+WorkingDirectory=/opt/drop/src/drop/server
+EnvironmentFile=/opt/drop/src/drop/server/.env
+ExecStartPre=/bin/bash -c 'pkill -u drop nginx 2>/dev/null; sleep 1; fuser -k 3000/tcp 2>/dev/null || true'
+ExecStart=/usr/bin/node .output/server/index.mjs
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+StandardOutput=append:/opt/drop/logs/drop.log
+StandardError=append:/opt/drop/logs/drop-error.log
+
+[Install]
+WantedBy=multi-user.target

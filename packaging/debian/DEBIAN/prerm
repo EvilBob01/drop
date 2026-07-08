@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+systemctl stop drop.service 2>/dev/null || true
+systemctl disable drop.service 2>/dev/null || true

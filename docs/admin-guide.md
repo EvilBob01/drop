@@ -59,3 +59,60 @@ Admin Dashboard → **Users** → click user → **Reset Password**
 # Follow live:
 tail -f /opt/drop/logs/drop.log | grep -v nginx
 ```
+
+
+---
+
+## Auto-Batch Import
+
+Instead of importing games one-by-one through the UI, use the bulk import
+endpoint that automatically matches all library games to metadata.
+
+### How It Works
+
+1. Reads every folder in `/library` not yet in the database
+2. Normalises the folder name: strips `[FitGirl Repack]`, `-GOG`, `-TENOKE`,
+   dot-separators, version strings, etc. via `gameNameNormalize`
+3. Searches Steam and PCGamingWiki with the clean name
+4. Queues a game-import task if the top match score is at or above the threshold
+5. Returns a JSON report of queued vs skipped games
+
+### Running It
+
+Use the CLI API token stored in the database:
+
+```bash
+# Dry run — predictions without creating any tasks
+curl -s -X POST http://localhost:3000/api/v1/admin/import/game/auto-batch \
+  -H 'Authorization: Bearer drop-cli-autobatch-token-360pc' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun": true, "minScore": 0.75}' | python3 -m json.tool
+
+# Real run
+curl -s -X POST http://localhost:3000/api/v1/admin/import/game/auto-batch \
+  -H 'Authorization: Bearer drop-cli-autobatch-token-360pc' \
+  -H 'Content-Type: application/json' \
+  -d '{"minScore": 0.75}' | python3 -m json.tool
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `dryRun` | `false` | If true, report only — no tasks created |
+| `minScore` | `0.75` | Minimum fuzzy match confidence 0 to 1 |
+| `gameType` | `"Game"` | GameType to assign all imported games |
+| `limit` | `0` | Max games per call; 0 = unlimited |
+
+### Skipped Games
+
+Games that do not reach the confidence threshold appear in the `skipped` array.
+Review them manually at **Admin Library Import**. Common reasons:
+- ROM packs and BIOS files
+- Emulator bundles
+- Obscure titles with no Steam or PCGamingWiki entry
+
+### Re-running After Adding New Games
+
+Run the same command again. Games already imported or with active tasks are
+automatically excluded from each run.

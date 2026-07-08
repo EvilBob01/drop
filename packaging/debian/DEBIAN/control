@@ -1,0 +1,17 @@
+Package: drop-oss
+Version: 0.4.0-360pc1
+Section: games
+Priority: optional
+Architecture: amd64
+Depends: nodejs (>= 22), postgresql (>= 15), nginx, curl
+Recommends: tailscale
+Maintainer: EvilBob <spam3@360pc.com>
+Description: Drop OSS — self-hosted DRM-free game distribution platform
+ Drop is an open-source game distribution platform similar to Steam.
+ It distributes and shares DRM-free games over LAN or the internet
+ using a P2P Rust daemon (torrential) and a Nuxt 3 web frontend.
+ .
+ This package contains the 360pc fork with native (no-Docker) deployment
+ patches, Tailwind CSS pre-generation fix, and bulk-import utilities.
+ .
+ Homepage: https://github.com/EvilBob01/drop

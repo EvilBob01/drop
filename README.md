@@ -79,13 +79,13 @@ After adding your library source in the admin panel, import all games in one sho
 ```bash
 # Dry run first — see what will be matched
 curl -s -X POST http://localhost:3000/api/v1/admin/import/game/auto-batch \
-  -H 'Authorization: Bearer drop-cli-autobatch-token-360pc' \
+  -H 'Authorization: Bearer YOUR_API_TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{"dryRun": true, "minScore": 0.75}' | python3 -m json.tool
 
 # Run it for real
 curl -s -X POST http://localhost:3000/api/v1/admin/import/game/auto-batch \
-  -H 'Authorization: Bearer drop-cli-autobatch-token-360pc' \
+  -H 'Authorization: Bearer YOUR_API_TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{"minScore": 0.75}' | python3 -m json.tool
 ```

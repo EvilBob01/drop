@@ -79,18 +79,24 @@ endpoint that automatically matches all library games to metadata.
 
 ### Running It
 
-Use the CLI API token stored in the database:
+Retrieve your API token from the database, then use it in the curl calls below:
+
+```bash
+# Get your token
+PGPASSWORD=droppass psql -U drop -h 127.0.0.1 -d drop -t \
+  -c "SELECT token FROM \"APIToken\" WHERE name = 'CLI auto-batch token';" | tr -d ' '
+```
 
 ```bash
 # Dry run — predictions without creating any tasks
 curl -s -X POST http://localhost:3000/api/v1/admin/import/game/auto-batch \
-  -H 'Authorization: Bearer drop-cli-autobatch-token-360pc' \
+  -H 'Authorization: Bearer YOUR_API_TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{"dryRun": true, "minScore": 0.75}' | python3 -m json.tool
 
 # Real run
 curl -s -X POST http://localhost:3000/api/v1/admin/import/game/auto-batch \
-  -H 'Authorization: Bearer drop-cli-autobatch-token-360pc' \
+  -H 'Authorization: Bearer YOUR_API_TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{"minScore": 0.75}' | python3 -m json.tool
 ```

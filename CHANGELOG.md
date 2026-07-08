@@ -34,7 +34,7 @@ Upstream changes from [Drop-OSS/drop](https://github.com/Drop-OSS/drop) are also
   SQL backfill applied for 380 existing games (7,830 objects already on disk).
 
 - **System API token for CLI operations**
-  Token `drop-cli-autobatch-token-360pc` stored in `APIToken` table with
+  CLI API token stored in `APIToken` table with
   `import:game:*` and `import:version:*` ACLs for headless admin scripts.
 
 - **Debian package build infrastructure** (`packaging/`)

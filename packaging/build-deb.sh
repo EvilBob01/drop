@@ -38,6 +38,7 @@ pnpm run build
 
 # ── 3. Assemble Package Tree ──────────────────────────────────────────────────
 echo "==> Assembling package..."
+mkdir -p "$SCRIPT_DIR/build"
 rm -rf "$BUILD_DIR"
 cp -r "$SCRIPT_DIR/debian" "$BUILD_DIR"
 

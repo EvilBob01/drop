@@ -27,7 +27,7 @@ patched for native Debian/Proxmox deployment and extended with bulk-import tooli
 |---|---|
 | **No Docker** | Runs natively on Debian 12/13 as a systemd service |
 | **Debian package** | Pre-built `.deb` available on the [Releases](https://github.com/EvilBob01/drop/releases) page |
-| **Game name normaliser** | Strips `[FitGirl Repack]`, `-GOG`, `-TENOKE`, dot-separators, and version strings before metadata search |
+| **Game name normaliser** | Strips `release group names`, dot-separators, and version strings before metadata search |
 | **Auto-batch import** | One API call imports all 500+ games from `/library` with fuzzy metadata matching |
 | **Image carousel fix** | Screenshots from Steam/PCGamingWiki now populate the game detail carousel |
 | **PCGamingWiki fix** | Browser User-Agent headers added to image proxy — no more 403 on cover art |

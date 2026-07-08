@@ -42,15 +42,15 @@ pct create 108 local:vztmpl/debian-13-standard_13.x-x_amd64.tar.zst \
   --rootfs local-lvm:40 \
   --net0 name=eth0,bridge=vmbr0,ip=192.168.1.143/24,gw=192.168.1.1 \
   --nameserver 192.168.1.1 \
-  --searchdomain 360pc.net \
+  --searchdomain yourdomain.com \
   --features nesting=1 \
   --unprivileged 0
 
 # Bind-mount the games library read-only into the container
-echo "mp0: /voracity/incoming/Done/Games,mp=/library,ro=1" >> /etc/pve/lxc/108.conf
+echo "mp0: /Games,mp=/library,ro=1" >> /etc/pve/lxc/ContinerID.conf
 
-pct start 108
-pct exec 108 -- bash
+pct start container#
+pct exec container# -- bash
 ```
 
 > **Privileged container** (`--unprivileged 0`) is required for the ZFS bind mount.
@@ -102,9 +102,9 @@ rustup default nightly
 rustc --version  # rustc 1.x.x-nightly
 ```
 
-Add to `/root/.bashrc` so it persists across sessions:
+Add to `.bashrc` so it persists across sessions:
 ```bash
-echo 'source /root/.cargo/env' >> /root/.bashrc
+echo 'source .cargo/env' >> .bashrc
 ```
 
 ---
@@ -116,9 +116,9 @@ systemctl enable --now postgresql
 
 # Create the drop database user and database
 sudo -u postgres psql << 'SQL'
-CREATE USER drop WITH PASSWORD 'droppass';
-CREATE DATABASE drop OWNER drop;
-GRANT ALL PRIVILEGES ON DATABASE drop TO drop;
+CREATE USER dropuser WITH PASSWORD 'droppass';
+CREATE DATABASE dropdb OWNER dropuser;
+GRANT ALL PRIVILEGES ON DATABASE dropdb TO dropuser;
 SQL
 ```
 
@@ -145,9 +145,9 @@ tailscale up
 ## 7. Create the `drop` System User
 
 ```bash
-useradd -r -m -d /opt/drop -s /bin/bash drop
-mkdir -p /opt/drop/{src,logs}
-chown -R drop:drop /opt/drop
+useradd -r -m -d /opt/dropuser -s /bin/bash dropuser
+mkdir -p /opt/dropuser/{src,logs}
+chown -R dropuser:dropuser /opt/dropuser
 ```
 
 ---
@@ -238,8 +238,8 @@ chmod +x /usr/local/bin/cargo
 Create `/opt/drop/src/drop/server/.env`:
 
 ```env
-DATABASE_URL="postgres://drop:droppass@127.0.0.1:5432/drop"
-EXTERNAL_URL="https://games.360pc.net"
+DATABASE_URL="postgres://dropuser:droppass@127.0.0.1:5432/drop"
+EXTERNAL_URL="https://yourdomain.com"
 PORT=4000
 TORRENTIAL_PATH=/usr/local/bin/torrential
 
@@ -258,7 +258,7 @@ IGDB_CLIENT_SECRET=""
 
 ```bash
 cd /opt/drop/src/drop/server
-DATABASE_URL="postgres://drop:droppass@127.0.0.1:5432/drop" \
+DATABASE_URL="postgres://dropuser:droppass@127.0.0.1:5432/drop" \
   pnpm exec prisma migrate deploy
 ```
 
@@ -276,8 +276,8 @@ Requires=postgresql.service
 
 [Service]
 Type=simple
-User=drop
-Group=drop
+User=dropuser
+Group=dropuser
 WorkingDirectory=/opt/drop/src/drop/server
 EnvironmentFile=/opt/drop/src/drop/server/.env
 ExecStartPre=/bin/bash -c 'pkill -u drop nginx 2>/dev/null; sleep 1; fuser -k 3000/tcp 2>/dev/null || true'
@@ -319,7 +319,7 @@ pip install certbot-dns-namecheap  # or use --manual
 
 Get the certificate:
 ```bash
-certbot certonly --manual --preferred-challenges dns -d games.360pc.net
+certbot certonly --manual --preferred-challenges dns -d yourdomain.com
 # Follow the DNS TXT record instructions
 ```
 
@@ -327,16 +327,16 @@ Create `/etc/nginx/sites-available/drop`:
 ```nginx
 server {
     listen 80;
-    server_name games.360pc.net;
+    server_name yourdomain.com;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name games.360pc.net;
+    server_name yourdomain.com;
 
-    ssl_certificate     /etc/letsencrypt/live/games.360pc.net/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/games.360pc.net/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
@@ -365,7 +365,7 @@ nginx -t && systemctl reload nginx
 
 ## 16. First-Run Setup
 
-1. Open `https://games.360pc.net` (or `http://192.168.1.143:3000` on LAN)
+1. Open `https://yourdomain.com` (or `http://localhost:3000` on LAN)
 2. You will be directed to `/auth/setup` to create the admin account
 3. After creating the account, sign in at `/auth/signin`
 4. Go to **Admin → Library → Add source**, set path to `/library`

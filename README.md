@@ -13,7 +13,7 @@
 Self-hosted DRM-free game distribution for families — no Docker required.
 
 This is [EvilBob01](https://github.com/EvilBob01)'s fork of [Drop OSS](https://github.com/Drop-OSS/drop),
-patched for native Debian/Proxmox deployment and extended with bulk-import tooling for large FitGirl/GOG libraries.
+patched for native Debian/Proxmox deployment and extended with bulk-import tooling for large libraries.
 
 <div align="center">
 <img src="https://droposs.org/_ipx/f_webp&q_80/images/carousel/store.png" alt="Drop Screenshot" width="900rem"/>

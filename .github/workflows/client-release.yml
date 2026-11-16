@@ -9,9 +9,6 @@ on:
         description: "tagName to be associated with this release."
   release:
     types: [published]
-  # This can be used to automatically publish nightlies at UTC nighttime
-#  schedule:
-#    - cron: "0 2 * * *" # run at 2 AM UTC
 
 # This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
 
@@ -36,21 +33,20 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           run_install: false
 
       - name: setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
           cache: pnpm
-
 
       - name: install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -61,7 +57,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './desktop/src-tauri -> target'
+          workspaces: "./desktop/src-tauri -> target"
 
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm' # This must match the platform value defined above.
@@ -83,6 +79,10 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
 
+          # Add build.keychain to the user keychain search list so that codesign
+          # (invoked later by tauri-action WITHOUT an explicit --keychain) can
+          # resolve the signing identity from it.
+          security list-keychains -d user -s build.keychain $(security list-keychains -d user | tr -d '"')
 
           echo "Created keychain"
 
@@ -118,15 +118,227 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # Do NOT set APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD here. Doing so
+          # makes tauri-action import the cert into its own throwaway keychain and
+          # look up the identity by Apple-only name prefixes (e.g.
+          # "Developer ID Application:"), which never matches our "Drop OSS" cert
+          # and fails with "failed to resolve signing identity". Instead we rely on
+          # the build.keychain prepared above and only pass the resolved identity.
           APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
           NO_STRIP: true
         with:
-          tagName: ${{ inputs.print_tags || 'v__VERSION__' }} # the action automatically replaces \_\_VERSION\_\_ with the app version.
+          releaseId: ${{ github.event.release.id || '' }}
+          tagName: ${{ github.event.release.tag_name || inputs.tagName || 'v__VERSION__' }} # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: "Auto-release v__VERSION__"
           releaseBody: "See the assets to download this version and install. This release was created automatically."
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
-          projectPath: './desktop'
+          projectPath: "./desktop"
+
+  prepare-release-packages:
+    needs: publish-tauri
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    outputs:
+      release-tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - name: Prepare release package metadata
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tagName }}
+        run: |
+          set -euo pipefail
+
+          version="$(jq -r '.version' desktop/src-tauri/tauri.conf.json)"
+          tag="${RELEASE_TAG:-v${version}}"
+          [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]]
+          [[ "$tag" =~ ^[A-Za-z0-9._-]+$ ]]
+
+          prerelease="$(gh release view "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isPrerelease --jq '.isPrerelease')"
+          if [[ "$prerelease" != "true" && "$prerelease" != "false" ]]; then
+            echo "GitHub returned an invalid pre-release flag for $tag: $prerelease" >&2
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+          deb_name="Drop.Desktop.Client_${version}_amd64.deb"
+          gh release download "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$deb_name" \
+            --dir "$RUNNER_TEMP"
+
+          node packages/update-release-packages.mjs "$tag" "$version" "$RUNNER_TEMP/$deb_name"
+
+      - name: Upload prepared package metadata
+        uses: actions/upload-artifact@v7
+        with:
+          name: prepared-release-packages
+          path: |
+            packages/drop-oss-app/PKGBUILD
+            packages/drop-oss-app/.SRCINFO
+            packages/drop-oss-app-bin/PKGBUILD
+            packages/drop-oss-app-bin/.SRCINFO
+            packages/flatpak/org.droposs.client.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  publish-aur:
+    needs: prepare-release-packages
+    if: needs.prepare-release-packages.outputs.prerelease == 'false'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download prepared package metadata
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-release-packages
+          path: packages
+
+      - name: Publish AUR packages
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          RELEASE_VERSION: ${{ needs.prepare-release-packages.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$AUR_SSH_PRIVATE_KEY" ]]; then
+            echo "AUR_SSH_PRIVATE_KEY is required to publish the AUR packages." >&2
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$HOME/.ssh/aur"
+          chmod 600 "$HOME/.ssh/aur"
+          ssh-keyscan -H aur.archlinux.org >> "$HOME/.ssh/known_hosts"
+          eval "$(ssh-agent -s)"
+          ssh-add "$HOME/.ssh/aur"
+
+          for package in drop-oss-app-bin drop-oss-app; do
+            package_dir="$RUNNER_TEMP/$package"
+            git clone "ssh://aur@aur.archlinux.org/$package.git" "$package_dir"
+            cp "packages/$package/PKGBUILD" "$package_dir/PKGBUILD"
+            cp "packages/$package/.SRCINFO" "$package_dir/.SRCINFO"
+            git -C "$package_dir" config user.name "github-actions[bot]"
+            git -C "$package_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C "$package_dir" add PKGBUILD .SRCINFO
+            if ! git -C "$package_dir" diff --cached --quiet; then
+              git -C "$package_dir" commit -m "Update to $RELEASE_VERSION"
+              git -C "$package_dir" push origin HEAD:master
+            fi
+          done
+
+  publish-arch:
+    needs: prepare-release-packages
+    runs-on: ubuntu-24.04
+    container: archlinux:base
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: write
+    steps:
+      - name: Install Arch packaging tools
+        run: pacman -Syu --noconfirm --needed base-devel git libarchive github-cli
+
+      - uses: actions/checkout@v7
+
+      - name: Download prepared package metadata
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-release-packages
+          path: packages
+
+      - name: Build Arch package
+        working-directory: packages/drop-oss-app-bin
+        run: |
+          set -euo pipefail
+
+          useradd --create-home builder
+          chown -R builder:builder .
+          # Repackage the prebuilt Debian binary without installing its runtime dependencies.
+          runuser -u builder -- makepkg --nodeps --noconfirm
+
+      - name: Upload Arch package
+        working-directory: packages/drop-oss-app-bin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare-release-packages.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+
+          package_list="$(runuser -u builder -- makepkg --packagelist)"
+          mapfile -t packages <<< "$package_list"
+          if [[ "${#packages[@]}" -ne 1 || ! -f "${packages[0]}" ]]; then
+            echo "Expected one built Arch package, found: $package_list" >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${packages[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+  publish-flatpak:
+    needs: prepare-release-packages
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download prepared package metadata
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-release-packages
+          path: packages
+
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
+      - name: Add Flathub and install build dependencies
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.gnome.Platform//50 org.gnome.Sdk//50
+
+      - name: Build and upload Flatpak bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare-release-packages.outputs.release-tag }}
+          RELEASE_VERSION: ${{ needs.prepare-release-packages.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          repo="$RUNNER_TEMP/flatpak-repo"
+          build_dir="$RUNNER_TEMP/flatpak-build"
+          bundle="$RUNNER_TEMP/Drop.Desktop.Client_${RELEASE_VERSION}_x86_64.flatpak"
+          flatpak-builder --user --force-clean --repo="$repo" \
+            "$build_dir" packages/flatpak/org.droposs.client.json
+          flatpak build-bundle \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            "$repo" "$bundle" org.droposs.client master
+
+          gh release upload "$RELEASE_TAG" "$bundle" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

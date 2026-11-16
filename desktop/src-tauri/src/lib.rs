@@ -8,8 +8,17 @@
 #![deny(clippy::all)]
 
 use std::{
-    env, fs::File, io::Write, panic::PanicHookInfo, path::Path, str::FromStr,
-    sync::nonpoison::Mutex, time::SystemTime,
+    env,
+    fs::File,
+    io::Write,
+    panic::PanicHookInfo,
+    path::Path,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        nonpoison::Mutex,
+    },
+    time::SystemTime,
 };
 
 use ::client::{
@@ -40,7 +49,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use tauri::{
-    AppHandle, LogicalPosition, LogicalSize, Manager, RunEvent, WebviewBuilder, WebviewUrl,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, RunEvent, WebviewBuilder, WebviewUrl,
     WindowBuilder, WindowEvent,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
@@ -260,6 +269,7 @@ pub fn run() {
             get_autostart_enabled,
             open_process_logs,
             get_launch_options,
+            get_process_handlers,
             #[cfg(target_os = "linux")]
             ::process::compat::fetch_proton_paths,
             #[cfg(target_os = "linux")]
@@ -359,8 +369,17 @@ pub fn run() {
                 )
                 .expect("Failed to generate menu");
 
+                if env::var("NO_TRAY_ICON").is_ok_and(|value| value.to_lowercase() == "true") {
+                    TRAY_DISABLED.store(true, Ordering::Relaxed);
+                } else if !tray_icon_supported() {
+                    warn!(
+                        "appindicator library not available at runtime, disabling system tray icon"
+                    );
+                    TRAY_DISABLED.store(true, Ordering::Relaxed);
+                }
+
                 run_on_tray(|| {
-                    TrayIconBuilder::new()
+                    let tray = TrayIconBuilder::new()
                         .icon(
                             app.default_window_icon()
                                 .expect("Failed to get default window icon")
@@ -369,9 +388,14 @@ pub fn run() {
                         .menu(&menu)
                         .on_menu_event(|app, event| match event.id.as_ref() {
                             "open" => {
-                                app.webview_windows()
-                                    .get("frontend")
-                                    .expect("Failed to get webview")
+                                #[cfg(target_os = "linux")]
+                                {
+                                    // Resume webview rendering after showing
+                                    app_emit!(app, "window_visibility_change", ());
+                                }
+
+                                app.get_window("main")
+                                    .expect("Failed to get main window")
                                     .show()
                                     .expect("Failed to show window");
                             }
@@ -383,8 +407,12 @@ pub fn run() {
                                 warn!("menu event not handled: {:?}", event.id);
                             }
                         })
-                        .build(app)
-                        .expect("error while setting up tray menu");
+                        .build(app);
+
+                    if let Err(e) = tray {
+                        warn!("failed to set up system tray icon, disabling tray: {e}");
+                        TRAY_DISABLED.store(true, Ordering::Relaxed);
+                    }
                 });
 
                 {
@@ -426,7 +454,13 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 run_on_tray(|| {
-                    window.hide().expect("Failed to close window in tray");
+                    // Pause webview rendering before hiding to prevent idle CPU usage
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = window.app_handle().emit("window_visibility_change", ());
+                    }
+
+                    window.hide().expect("Failed to hide window in tray");
                     api.prevent_close();
                 });
             }
@@ -435,7 +469,12 @@ pub fn run() {
         .expect("error while running tauri application");
 
     app.run(|_app_handle, event| {
-        if let RunEvent::ExitRequested { code, api, .. } = event {
+        if let RunEvent::ExitRequested {
+            code,
+            api,
+            ..
+        } = event
+        {
             run_on_tray(|| {
                 if code.is_none() {
                     api.prevent_exit();
@@ -445,13 +484,30 @@ pub fn run() {
     });
 }
 
+static TRAY_DISABLED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "linux")]
+fn tray_icon_supported() -> bool {
+    [
+        "libayatana-appindicator3.so.1",
+        "libappindicator3.so.1",
+        "libayatana-appindicator3.so",
+        "libappindicator3.so",
+    ]
+    .iter()
+    .any(|name| unsafe { libloading::Library::new(name) }.is_ok())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn tray_icon_supported() -> bool {
+    true
+}
+
 fn run_on_tray<T: FnOnce()>(f: T) {
-    if match std::env::var("NO_TRAY_ICON") {
-        Ok(s) => s.to_lowercase() != "true",
-        Err(_) => true,
-    } {
-        (f)();
+    if TRAY_DISABLED.load(Ordering::Relaxed) {
+        return;
     }
+    (f)();
 }
 
 // TODO: Refactor

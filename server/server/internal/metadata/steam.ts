@@ -1,4 +1,10 @@
-import { MetadataSource } from "~/prisma/client/enums";
+import { AgeRatingOrganization, MetadataSource } from "~/prisma/client/enums";
+import {
+  ESRBRating,
+  PEGIRating,
+  USKRating,
+  ACBRating,
+} from "~/utils/ageRatings";
 import type { MetadataProvider } from ".";
 import type {
   GameMetadataSearchResult,
@@ -7,6 +13,7 @@ import type {
   _FetchCompanyMetadataParams,
   CompanyMetadata,
   GameMetadataRating,
+  GameMetadataAgeRating,
 } from "./types";
 import type { TaskRunContext } from "../tasks";
 import * as jdenticon from "jdenticon";
@@ -122,7 +129,8 @@ interface SteamAppDetailsLarge extends SteamAppDetailsSmall {
       ordinal: number;
     }[];
   };
-  full_description: string;
+  // Can be undefined if the game is not available in the country of the request
+  full_description: string | undefined;
 }
 
 interface SteamAppDetailsPackage {
@@ -141,6 +149,12 @@ interface SteamTagsPackage {
     version_hash: string;
     tags: SteamTags[];
   };
+}
+
+interface SteamRatingEntry {
+  rating: string;
+  descriptors?: string;
+  required_age?: string;
 }
 
 interface SteamWebAppDetailsSmall {
@@ -162,6 +176,7 @@ interface SteamWebAppDetailsSmall {
   mac_requirements: { minimum: string; recommended: string };
   linux_requirements: { minimum: string; recommended: string };
   legal_notice: string;
+  ratings?: Record<string, SteamRatingEntry>;
 }
 
 interface SteamWebAppDetailsLarge extends SteamWebAppDetailsSmall {
@@ -177,6 +192,28 @@ interface SteamWebAppDetailsPackage {
     data: SteamWebAppDetailsSmall | SteamWebAppDetailsLarge;
   };
 }
+
+const STEAM_RATING_KEY_TO_ORG: Record<string, AgeRatingOrganization> = {
+  esrb: AgeRatingOrganization.ESRB,
+  pegi: AgeRatingOrganization.PEGI,
+  usk: AgeRatingOrganization.USK,
+  oflc: AgeRatingOrganization.ACB,
+};
+
+function lowercaseNormMap(
+  ratings: Record<string, { value: string; age: number }>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.values(ratings).map((r) => [r.value.toLowerCase(), r.value]),
+  );
+}
+
+const STEAM_RATING_NORMALIZE: Record<string, Record<string, string>> = {
+  esrb: lowercaseNormMap(ESRBRating),
+  pegi: lowercaseNormMap(PEGIRating),
+  usk: lowercaseNormMap(USKRating),
+  oflc: lowercaseNormMap(ACBRating),
+};
 
 export class SteamProvider implements MetadataProvider {
   name() {
@@ -306,7 +343,8 @@ export class SteamProvider implements MetadataProvider {
             "https://store.steampowered.com/publisher/",
           ),
       )
-      .map((v) => v.attribs.href);
+      .map((v) => v.attribs.href)
+      .filter((v) => v !== undefined);
 
     const companies: {
       [key: string]: {
@@ -319,6 +357,8 @@ export class SteamProvider implements MetadataProvider {
       const [type, name] = v
         .substring("https://store.steampowered.com/".length, v.indexOf("?"))
         .split("/");
+
+      if (!type || !name) return;
 
       companies[name] ??= { pub: false, dev: false };
       switch (type) {
@@ -360,7 +400,7 @@ export class SteamProvider implements MetadataProvider {
     context?.logger.info("Fetching detailed description and reviews...");
     const webAppDetails = (await this._getWebAppDetails(
       id,
-      "metacritic",
+      "metacritic,ratings",
     )) as SteamWebAppDetailsLarge;
 
     const detailedDescription =
@@ -379,7 +419,7 @@ export class SteamProvider implements MetadataProvider {
       );
     } else {
       context?.logger.info("Using fallback description from basic game info");
-      description = currentGame.full_description;
+      description = currentGame.full_description ?? "";
     }
 
     context?.progress(90);
@@ -403,6 +443,13 @@ export class SteamProvider implements MetadataProvider {
     context?.logger.info(
       `Steam reviews: ${steamReviewCount} reviews, ${steamRating}% positive`,
     );
+
+    const ageRatings = this._extractAgeRatings(webAppDetails?.ratings);
+    if (ageRatings.length > 0) {
+      context?.logger.info(
+        `Found ${ageRatings.length} age ratings: ${ageRatings.map((r) => `${r.organization}: ${r.rating}`).join(", ")}`,
+      );
+    }
 
     if (webAppDetails?.metacritic) {
       reviews.push({
@@ -434,11 +481,12 @@ export class SteamProvider implements MetadataProvider {
       developers,
       tags,
       reviews,
+      ageRatings,
       icon,
       bannerId: banner,
       coverId: cover,
       images,
-    } as GameMetadata;
+    } satisfies GameMetadata;
   }
 
   async fetchCompany({
@@ -546,7 +594,9 @@ export class SteamProvider implements MetadataProvider {
     let titleMatch = ogTitleRegex.exec(html);
     titleMatch ??= titleTagRegex.exec(html);
 
-    return titleMatch ? this._decodeHtmlEntities(titleMatch[1]) : undefined;
+    return titleMatch && titleMatch[1]
+      ? this._decodeHtmlEntities(titleMatch[1])
+      : undefined;
   }
 
   private _extractDescription(html: string): string | undefined {
@@ -558,7 +608,9 @@ export class SteamProvider implements MetadataProvider {
     let descMatch = ogDescRegex.exec(html);
     descMatch ??= nameDescRegex.exec(html);
 
-    return descMatch ? this._decodeHtmlEntities(descMatch[1]) : undefined;
+    return descMatch && descMatch[1]
+      ? this._decodeHtmlEntities(descMatch[1])
+      : undefined;
   }
 
   private _extractImage(html: string): string | undefined {
@@ -583,6 +635,7 @@ export class SteamProvider implements MetadataProvider {
     curatorUrlMatch ??= linkfilterRegex.exec(html);
 
     if (!curatorUrlMatch) return undefined;
+    if (!curatorUrlMatch[1]) return undefined;
 
     try {
       return decodeURIComponent(curatorUrlMatch[1]);
@@ -601,11 +654,12 @@ export class SteamProvider implements MetadataProvider {
     bannerMatch ??= backgroundImageRegex.exec(html);
 
     if (!bannerMatch) return undefined;
+    if (!bannerMatch[1]) return undefined;
 
     let bannerUrl = bannerMatch[1].replace(/['"]/g, "");
     // Clean up the URL
     if (bannerUrl.includes("?")) {
-      bannerUrl = bannerUrl.split("?")[0];
+      bannerUrl = bannerUrl.split("?")[0]!;
     }
     return bannerUrl;
   }
@@ -784,6 +838,24 @@ export class SteamProvider implements MetadataProvider {
     }
 
     return appData;
+  }
+
+  private _extractAgeRatings(
+    ratings: Record<string, SteamRatingEntry> | undefined,
+  ): GameMetadataAgeRating[] {
+    if (!ratings) return [];
+
+    const results: GameMetadataAgeRating[] = [];
+    for (const [key, entry] of Object.entries(ratings)) {
+      const org = STEAM_RATING_KEY_TO_ORG[key];
+      if (!org) continue;
+
+      const normalized =
+        STEAM_RATING_NORMALIZE[key]?.[entry.rating] ??
+        entry.rating.toUpperCase();
+      results.push({ organization: org, rating: normalized });
+    }
+    return results;
   }
 
   private _getImageUrl(filename: string, format?: string): string {

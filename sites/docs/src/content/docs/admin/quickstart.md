@@ -24,7 +24,7 @@ services:
       - POSTGRES_USER=drop
       - POSTGRES_DB=drop
   drop:
-    image: ghcr.io/drop-oss/drop:0.4.0-rc-3
+    image: ghcr.io/drop-oss/drop:0.4.0-rc-5
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,7 +40,7 @@ services:
 
 **The main things in this `compose.yaml` is the volumes attached to the `drop` service:**
 
-1. `./library` is where you will put your games to be imported into Drop. See '[Creating a library](/admin/guides/creating-library/)' once you're set up.
+1. `./library` is where you will put your games to be imported into Drop. See '[Creating a library](/docs/admin/guides/creating-library/)' once you're set up.
 2. `./data` is where Drop will store anything that's using the default file-system backed storage system. Typically, these are objects.
 
 :::tip

@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomBytes, randomUUID } from "crypto";
 import prisma from "../../db/database";
 import type { UserModel } from "~/prisma/client/models";
 import { AuthMec } from "~/prisma/client/enums";
@@ -43,6 +43,7 @@ interface OIDCAuthSession {
   redirectUrl: string;
   callbackUrl: string;
   state: string;
+  codeVerifier: string | undefined;
   options: OIDCAuthSessionOptions;
   claims: OIDCAuthSessionClaims;
 }
@@ -283,18 +284,29 @@ export class OIDCManager {
 
   generateAuthSession(options?: OIDCAuthSessionOptions): OIDCAuthSession {
     const stateKey = randomUUID();
+    let codeVerifier: string | undefined;
+    let codeChallenge: string | undefined;
+    if (systemConfig.shouldOidcUsePkce()) {
+      codeVerifier = randomBytes(32).toString("base64url");
+      codeChallenge = createHash("sha256")
+        .update(codeVerifier)
+        .digest("base64url");
+    }
 
     const normalisedUrl = new URL(
       this.oidcConfiguration.authorization_endpoint,
     ).toString();
 
-    const queryParams = queryParamBuilder({
+    const authParams: { [key: string]: string | undefined } = {
       client_id: this.clientId,
       redirect_uri: this.redirectUrl.toString(),
       state: stateKey,
       response_type: "code",
       scope: this.oidcConfiguration.scopes_supported.join(" "),
-    });
+      code_challenge: codeChallenge,
+      code_challenge_method: codeChallenge && "S256",
+    };
+    const queryParams = queryParamBuilder(authParams);
 
     const finalUrl = `${normalisedUrl}?${queryParams}`;
 
@@ -302,6 +314,7 @@ export class OIDCManager {
       redirectUrl: finalUrl,
       callbackUrl: this.redirectUrl.toString(),
       state: stateKey,
+      codeVerifier,
       options: options ?? { redirect: undefined },
       claims: {
         iss: this.oidcConfiguration.issuer.toString(),
@@ -329,14 +342,17 @@ export class OIDCManager {
     const userinfoEndpoint =
       this.oidcConfiguration.userinfo_endpoint.toString();
 
-    const requestBody = new URLSearchParams({
-      client_id: this.clientId,
-      client_secret: this.clientSecret,
-      grant_type: "authorization_code",
-      code: code,
-      redirect_uri: session.callbackUrl,
-      scope: this.oidcConfiguration.scopes_supported.join(","),
-    });
+    const requestBody = new URLSearchParams(
+      queryParamBuilder({
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
+        grant_type: "authorization_code",
+        code: code,
+        redirect_uri: session.callbackUrl,
+        scope: this.oidcConfiguration.scopes_supported.join(","),
+        code_verifier: session.codeVerifier,
+      }),
+    );
 
     try {
       const rawTokenResponse = await $fetch<unknown>(tokenEndpoint, {
@@ -407,7 +423,10 @@ export class OIDCManager {
       },
     });
 
-    if (existingAuthMek) return existingAuthMek.user;
+    if (existingAuthMek) {
+      await this.syncUserGroups(existingAuthMek.user.id, userinfo.groups);
+      return existingAuthMek.user;
+    }
 
     const username = userinfo[this.usernameClaim]?.toString();
     if (!username)
@@ -492,7 +511,43 @@ export class OIDCManager {
       },
     });
 
+    await this.syncUserGroups(created.user.id, userinfo.groups);
     return created.user;
+  }
+
+  private async syncUserGroups(
+    userId: string,
+    oidcGroups: string[] | undefined,
+  ) {
+    // If the IdP didn't include the groups claim, don't touch membership
+    if (oidcGroups === undefined) return;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return;
+
+    const groupsToSet =
+      oidcGroups.length === 0
+        ? []
+        : (
+            await prisma.userGroup.findMany({
+              where: { name: { in: oidcGroups } },
+              select: { id: true },
+            })
+          ).map((group: { id: string }) => ({ id: group.id }));
+
+    const data = {
+      groups: { set: groupsToSet },
+      ...(this.adminGroup !== undefined && {
+        admin: oidcGroups.includes(this.adminGroup),
+      }),
+    };
+
+    // SAFETY: existence verified above via findUnique
+    // eslint-disable-next-line drop/no-prisma-delete
+    await prisma.user.update({
+      where: { id: userId },
+      data,
+    });
   }
 
   /**

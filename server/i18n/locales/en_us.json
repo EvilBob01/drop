@@ -381,9 +381,13 @@
         "noSelected": "No extensions selected."
       },
       "game": {
+        "addAgeRating": "Add Rating",
         "addCarouselNoImages": "No images to add.",
         "addDescriptionNoImages": "No images to add.",
         "addImageCarousel": "Add from image library",
+        "ageRatingLabel": "{organization}: {rating}",
+        "ageRatings": "Age Ratings",
+        "ageRatingsEmpty": "No age ratings set",
         "currentBanner": "banner",
         "currentCover": "cover",
         "deleteImage": "Delete image",
@@ -395,6 +399,7 @@
         "imageCarouselEmpty": "No images added to the carousel yet.",
         "imageLibrary": "Image library",
         "imageLibraryDescription": "Please note all images uploaded are accessible to all users through browser dev-tools.",
+        "removeAgeRating": "Remove",
         "removeImageCarousel": "Remove image",
         "setBanner": "Set as banner",
         "setCover": "Set as cover"
@@ -605,6 +610,7 @@
     "launcherOpen": "Open in Launcher",
     "noGames": "No games in library",
     "notFound": "Game not found",
+    "playtime": "Playtime: {time} hours",
     "search": "Search library…",
     "subheader": "Organize your games into collections for easy access, and access all your games."
   },
@@ -707,6 +713,7 @@
     "welcomeDescription": "Welcome to Drop setup wizard. It will walk you through configuring Drop for the first time, and how it works."
   },
   "store": {
+    "ageRating": "Age Rating",
     "commingSoon": "coming soon",
     "developers": "Developers | Developer | Developers",
     "featured": "Featured",
@@ -811,6 +818,32 @@
       "description": "Manage the users on your Drop instance, and configure your authentication methods.",
       "displayNameHeader": "Display Name",
       "emailHeader": "Email",
+      "groups": {
+        "addBannedRating": "Add banned rating",
+        "addMember": "Select a user...",
+        "advancedOverrides": "Advanced: Manual Overrides",
+        "applyAgeRestriction": "Apply age restriction",
+        "bannedRatings": "Banned Ratings",
+        "createGroup": "Create Group",
+        "deleteConfirm": "Are you sure you want to delete this group? This action cannot be undone.",
+        "deleteGroup": "Delete",
+        "description": "Manage user groups and age rating restrictions.",
+        "descriptionField": "Description",
+        "details": "Details",
+        "manualOverrideNote": "The current banned ratings do not match a standard age threshold. They may have been manually configured.",
+        "maximumContentAge": "Age Restriction",
+        "maximumContentAgeDescription": "Set the maximum content age allowed for members of this group. Ratings above this age will be banned.",
+        "members": "Members",
+        "name": "Name",
+        "noBannedRatings": "No banned ratings configured.",
+        "noMembers": "No members in this group.",
+        "oidcManagedNote": "Group membership is managed by your OIDC provider. Members are automatically synced when users log in. To change group membership, update your identity provider's group assignments.",
+        "removeBannedRating": "Remove",
+        "removeMember": "Remove",
+        "sliderOverrideWarning": "Manually adding or removing ratings here will override the slider. Use the slider above to reset to a standard age threshold.",
+        "title": "User Groups",
+        "unratedNote": "Games without age ratings will also be hidden from users in this group."
+      },
       "normalUserLabel": "Normal user",
       "simple": {
         "adminInvitation": "Admin invitation",

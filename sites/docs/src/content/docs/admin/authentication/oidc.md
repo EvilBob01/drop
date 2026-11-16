@@ -18,6 +18,7 @@ To configure OIDC, you must set the following environment variables:
 | `OIDC_USERNAME_CLAIM` (optional)     | Change the field that Drop pulls the username claim from. Users are merged based on their usernames. Defaults to "preferred_username". |
 | `OIDC_PROVIDER_NAME` (optional)      | Change the name of the OIDC provider that is displayed on the sign-in page. Default is "external provider".                            |
 | `OIDC_DONT_REQUIRE_HTTPS` (optional) | Flag to disable HTTPS requirement for OIDC providers.                                                                                  |
+| `OIDC_PKCE` (optional)               | Enable PKCE for the authorization code flow. Defaults to `true`; set to `false` for providers that do not support PKCE.                |
 
 ---
 
@@ -48,10 +49,10 @@ Drop recommends using the OIDC well-known option **instead** of manually specify
 
 ## Redirect URL
 
-Drop uses the `EXTERNAL_URL` environment variable to create the callback URL: `$EXTERNAL_URL/api/v1/auth/odic/callback`.
+Drop uses the `EXTERNAL_URL` environment variable to create the callback URL: `$EXTERNAL_URL/api/v1/auth/oidc/callback`.
 
-For example: if `EXTERNAL_URL` was set to `http://localhost:3000/`, then the redirect URL would be `http://localhost:3000/api/v1/auth/odic/callback`.
+For example: if `EXTERNAL_URL` was set to `http://localhost:3000/`, then the redirect URL would be `http://localhost:3000/api/v1/auth/oidc/callback`.
 
 ## Logout URL
 
-Drop supports OIDC back-channel logout, enabling the OIDC provider to logout users. Using the example above, the back-channel logout URL would be `http://localhost:3000/api/v1/auth/odic/logout`.
+Drop supports OIDC back-channel logout, enabling the OIDC provider to logout users. Using the example above, the back-channel logout URL would be `http://localhost:3000/api/v1/auth/oidc/logout`.

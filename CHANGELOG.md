@@ -5,6 +5,36 @@ Upstream changes from [Drop-OSS/drop](https://github.com/Drop-OSS/drop) are also
 
 ---
 
+## [Fork] Upstream sync — November 2026
+
+Merged 68 commits from Drop-OSS/drop `develop` (up to `2e66ef9d`). All fork
+patches carried over unchanged.
+
+### Upstream highlights (server)
+- User groups with age-rating restrictions (#454, #468) and age ratings on games (#451)
+- Playtime tracking (#506)
+- PKCE support for OIDC sign-in (#513)
+- Store sort/filter kept in the URL (#536); header dropdown and favicon fixes (#535, #537)
+- Steam import no longer fails when `full_description` is missing (#481)
+- Object storage stream leak fixes and age-rating migration repair (#497)
+- Autofill launch name on version import (#447); admin user bar overlap fix (#439)
+- Torrential: archive backend crash fix (#475), dependency security bumps
+- Nuxt 3.21.10, simplewebauthn 13.3.2, pino 9.14
+
+### Database
+- 3 new migrations: `repair_age_rating_schema`, `add_user_groups`,
+  `add_version_game_id_indexes` (apply with `prisma migrate deploy`)
+
+### Breaking for this deployment
+- **PCGamingWiki metadata now requires a MediaWiki bot password**
+  (`PCGAMINGWIKI_BOT_USERNAME` / `PCGAMINGWIKI_BOT_PASSWORD`, upstream #509).
+  Without them the provider is skipped; Steam continues to work.
+
+### Kept from fork
+- Prisma stays at 7.8.0 (upstream pins 7.7.0)
+
+---
+
 ## [Fork] 360pc Deployment — July 2026
 
 ### Added

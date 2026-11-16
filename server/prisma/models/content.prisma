@@ -31,7 +31,8 @@ model Game {
   mDescription      String // Supports markdown
   mReleased         DateTime // When the game was released
 
-  ratings GameRating[]
+  ratings    GameRating[]
+  ageRatings GameAgeRating[]
 
   featured Boolean @default(false)
 
@@ -73,6 +74,29 @@ model GameTag {
   @@index([name(ops: raw("gist_trgm_ops(siglen=32)"))], type: Gist)
 }
 
+enum AgeRatingOrganization {
+  ESRB
+  PEGI
+  CERO
+  USK
+  GRAC
+  ClassInd
+  ACB
+}
+
+model GameAgeRating {
+  id String @id @default(uuid())
+
+  organization   AgeRatingOrganization
+  rating         String // e.g. "E", "T", "M", "18", "CERO_B", comes from server enums
+  ratingCoverUrl String? // Badge image URL from IGDB, optional
+
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  gameId String
+
+  @@unique([gameId, organization], name: "gameOrganizationKey")
+}
+
 model GameRating {
   id String @id @default(uuid())
 
@@ -99,6 +123,8 @@ model UnimportedGameVersion {
 
   manifest Json
   fileList String[]
+
+  @@index([gameId])
 }
 
 // A particular set of files that relate to the version
@@ -126,6 +152,8 @@ model GameVersion {
 
   requiredContent  GameVersion[] @relation(name: "requiredContent")
   requiringContent GameVersion[] @relation(name: "requiredContent")
+
+  @@index([gameId])
 }
 
 model SetupConfiguration {

@@ -39,6 +39,7 @@ export type Game = {
   mCoverObjectId: string;
   mImageLibraryObjectIds: string[];
   mImageCarouselObjectIds: string[];
+  playtime: Array<{ seconds: number }>;
 };
 
 export type Collection = {
@@ -53,6 +54,7 @@ export type GameVersion = {
   userConfiguration: {
     launchTemplate: string;
     overrideProtonPath: string;
+    overrideHandler: string | undefined;
     enableUpdates: boolean
   };
   setups: Array<{ platform: string }>;

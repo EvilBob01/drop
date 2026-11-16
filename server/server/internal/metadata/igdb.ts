@@ -1,9 +1,19 @@
 import type { CompanyModel } from "~/prisma/client/models";
-import { MetadataSource } from "~/prisma/client/enums";
+import { AgeRatingOrganization, MetadataSource } from "~/prisma/client/enums";
+import {
+  ESRBRating,
+  PEGIRating,
+  CEROrating,
+  USKRating,
+  GRACRating,
+  ClassIndRating,
+  ACBRating,
+} from "~/utils/ageRatings";
 import type { MetadataProvider } from ".";
 import { MissingMetadataProviderConfig } from ".";
 import type {
   GameMetadataSearchResult,
+  GameMetadataAgeRating,
   _FetchGameMetadataParams,
   GameMetadata,
   _FetchCompanyMetadataParams,
@@ -78,8 +88,71 @@ interface IGDBSearchStub extends IGDBItem {
   name: string;
   cover?: IGDBID;
   first_release_date?: number; // unix timestamp
-  summary: string;
+  summary?: string;
 }
+
+interface IGDBAgeRating extends IGDBItem {
+  category: number; // 1=ESRB, 2=PEGI, 3=CERO, 4=USK, 5=GRAC, 6=CLASS_IND, 7=ACB
+  rating: number; // Specific rating level enum value
+  rating_cover_url?: string;
+}
+
+const IGDB_CATEGORY_TO_ORG: Record<number, AgeRatingOrganization> = {
+  1: AgeRatingOrganization.ESRB,
+  2: AgeRatingOrganization.PEGI,
+  3: AgeRatingOrganization.CERO,
+  4: AgeRatingOrganization.USK,
+  5: AgeRatingOrganization.GRAC,
+  6: AgeRatingOrganization.ClassInd,
+  7: AgeRatingOrganization.ACB,
+};
+
+const IGDB_RATING_TO_STRING: Record<number, string> = {
+  // PEGI
+  1: PEGIRating["3"].value,
+  2: PEGIRating["7"].value,
+  3: PEGIRating["12"].value,
+  4: PEGIRating["16"].value,
+  5: PEGIRating["18"].value,
+  // ESRB
+  7: ESRBRating.EC.value,
+  8: ESRBRating.E.value,
+  9: ESRBRating.E10.value,
+  10: ESRBRating.T.value,
+  11: ESRBRating.M.value,
+  12: ESRBRating.AO.value,
+  // CERO
+  13: CEROrating.A.value,
+  14: CEROrating.B.value,
+  15: CEROrating.C.value,
+  16: CEROrating.D.value,
+  17: CEROrating.Z.value,
+  // USK
+  18: USKRating["0"].value,
+  19: USKRating["6"].value,
+  20: USKRating["12"].value,
+  21: USKRating["16"].value,
+  22: USKRating["18"].value,
+  // GRAC
+  23: GRACRating.ALL.value,
+  24: GRACRating["12"].value,
+  25: GRACRating["15"].value,
+  26: GRACRating["18"].value,
+  // CLASS_IND
+  28: ClassIndRating.L.value,
+  29: ClassIndRating["10"].value,
+  30: ClassIndRating["12"].value,
+  31: ClassIndRating["14"].value,
+  32: ClassIndRating["16"].value,
+  33: ClassIndRating["18"].value,
+  // ACB
+  34: ACBRating.G.value,
+  35: ACBRating.PG.value,
+  36: ACBRating.M.value,
+  37: ACBRating.MA15.value,
+  38: ACBRating.R18.value,
+  39: ACBRating.RC.value,
+};
 
 // https://api-docs.igdb.com/?shell#game
 interface IGDBGameFull extends IGDBSearchStub {
@@ -242,11 +315,12 @@ export class IGDBProvider implements MetadataProvider {
     const body = `where id = ${mediaID}; fields image_id;`;
     const response = await this.request<IGDBCover>(type, body);
 
-    if (!response.length || !response[0].image_id) {
+    const media = response[0];
+    if (!media?.image_id) {
       throw new Error(`No image_id found for ${type} with id ${mediaID}`);
     }
 
-    const imageId = response[0].image_id;
+    const imageId = media.image_id;
     const result = `https://images.igdb.com/igdb/image/upload/${size}/${imageId}.jpg`;
 
     return result;
@@ -302,6 +376,36 @@ export class IGDBProvider implements MetadataProvider {
     return results;
   }
 
+  private async getAgeRatings(
+    ageRatingIds: IGDBID[] | undefined,
+  ): Promise<GameMetadataAgeRating[]> {
+    if (!ageRatingIds?.length) return [];
+
+    const results: GameMetadataAgeRating[] = [];
+    for (const id of ageRatingIds) {
+      const response = await this.request<IGDBAgeRating>(
+        "age_ratings",
+        `where id = ${id}; fields category,rating,rating_cover_url;`,
+      );
+
+      for (const ar of response) {
+        const organization = IGDB_CATEGORY_TO_ORG[ar.category];
+        const rating = IGDB_RATING_TO_STRING[ar.rating];
+        if (!organization || !rating) continue;
+
+        results.push({
+          organization,
+          rating,
+          ...(ar.rating_cover_url !== undefined && {
+            ratingCoverUrl: ar.rating_cover_url,
+          }),
+        });
+      }
+    }
+
+    return results;
+  }
+
   name() {
     return "IGDB";
   }
@@ -314,21 +418,21 @@ export class IGDBProvider implements MetadataProvider {
     const response = await this.request<IGDBSearchStub>("games", body);
 
     const results: GameMetadataSearchResult[] = [];
-    for (let i = 0; i < response.length; i++) {
+    for (const game of response) {
       let icon = "";
-      const cover = response[i].cover;
+      const cover = game.cover;
       if (cover !== undefined) {
         icon = await this.getIconURL(cover);
       } else {
         icon = "";
       }
 
-      const firstReleaseDate = response[i].first_release_date;
+      const firstReleaseDate = game.first_release_date;
       results.push({
-        id: "" + response[i].id,
-        name: response[i].name,
+        id: "" + game.id,
+        name: game.name,
         icon,
-        description: response[i].summary,
+        description: game.summary ?? "",
         year:
           firstReleaseDate === undefined
             ? 0
@@ -444,19 +548,19 @@ export class IGDBProvider implements MetadataProvider {
     };
 
     const genres = await this.getGenres(currentGame.genres);
+    const ageRatings = await this.getAgeRatings(currentGame.age_ratings);
 
+    const summary = currentGame.summary ?? "";
+    const storyline = currentGame.storyline ?? "";
     let description = "";
     let shortDescription = "";
 
-    if (currentGame.summary.length > (currentGame.storyline?.length ?? 0)) {
-      description = currentGame.summary;
-      shortDescription = this.trimMessage(
-        currentGame.storyline ?? currentGame.summary,
-        280,
-      );
+    if (summary.length > storyline.length) {
+      description = summary;
+      shortDescription = this.trimMessage(storyline || summary, 280);
     } else {
-      description = currentGame.storyline ?? currentGame.summary;
-      shortDescription = this.trimMessage(currentGame.summary, 280);
+      description = storyline || summary;
+      shortDescription = this.trimMessage(summary, 280);
     }
 
     const metadata = {
@@ -468,6 +572,7 @@ export class IGDBProvider implements MetadataProvider {
 
       genres,
       reviews: [review],
+      ageRatings,
 
       publishers,
       developers,

@@ -59,7 +59,7 @@ native_model = { path = "../../libraries/native_model", features = [
 page_size = "0.6.0"
 parking_lot = "0.12.3"
 process = { path = "./process" } # process
-rand = "0.9.1"
+rand = "0.10.2"
 rayon = "1.10.0"
 regex = "1.11.1"
 remote = { path = "./remote", version = "0.1.0" } # remote
@@ -82,7 +82,7 @@ sha1 = "0.10.6"
 shared_child = "1.0.1"
 slice-deque = "0.3.0"
 sysinfo = "0.36.1"
-tar = "0.4.44"
+tar = "0.4.46"
 tauri-plugin-autostart = "*"
 tauri-plugin-deep-link = "*"
 tauri-plugin-dialog = "*"
@@ -135,6 +135,9 @@ tauri-build = { version = "*", features = [] }
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2.0.0", features = ["deep-link"] }
+
+[target."cfg(target_os = \"linux\")".dependencies]
+libloading = "0.7"
 
 [profile.release]
 lto = true

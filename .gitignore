@@ -1,2 +1,6 @@
 dist/
 node_modules/
+.pnpm-store/
+.flatpak-builder
+# .deb build output
+packaging/build/

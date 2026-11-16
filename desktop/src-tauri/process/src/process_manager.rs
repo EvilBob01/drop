@@ -16,7 +16,7 @@ use database::{
 };
 use dynfmt::Format;
 use dynfmt::SimpleCurlyFormat;
-use games::{library::push_game_update, state::GameStatusManager};
+use games::{library::{push_game_update, report_playtime}, state::GameStatusManager};
 use log::{debug, info, warn};
 use serde::Serialize;
 use shared_child::SharedChild;
@@ -28,7 +28,8 @@ use crate::{
     format::DropFormatArgs,
     parser::{LaunchParameters, ParsedCommand},
     process_handlers::{
-        AsahiMuvmLauncher, MacLauncher, UMUCompatLauncher, UMUNativeLauncher, WindowsLauncher,
+        AsahiMuvmLauncher, LinuxNativeLauncher, MacLauncher, UMUCompatLauncher, UMUNativeLauncher,
+        WindowsCmdLauncher, WindowsDirectLauncher, WindowsLauncher, WindowsPowershellLauncher,
     },
 };
 
@@ -54,6 +55,13 @@ pub struct LaunchOption {
     name: String,
 }
 
+#[derive(Serialize)]
+pub struct ProcessHandlerOption {
+    id: String,
+    name: String,
+    description: String,
+}
+
 impl ProcessManager<'_> {
     pub fn new(app_handle: AppHandle) -> Self {
         let log_output_dir = DATA_ROOT_DIR.join("logs");
@@ -75,6 +83,22 @@ impl ProcessManager<'_> {
                 (
                     (Platform::Windows, Platform::Windows),
                     &WindowsLauncher {} as &(dyn ProcessHandler + Sync + Send + 'static),
+                ),
+                (
+                    (Platform::Windows, Platform::Windows),
+                    &WindowsDirectLauncher {} as &(dyn ProcessHandler + Sync + Send + 'static),
+                ),
+                (
+                    (Platform::Windows, Platform::Windows),
+                    &WindowsCmdLauncher {} as &(dyn ProcessHandler + Sync + Send + 'static),
+                ),
+                (
+                    (Platform::Windows, Platform::Windows),
+                    &WindowsPowershellLauncher {} as &(dyn ProcessHandler + Sync + Send + 'static),
+                ),
+                (
+                    (Platform::Linux, Platform::Linux),
+                    &LinuxNativeLauncher {} as &(dyn ProcessHandler + Sync + Send + 'static),
                 ),
                 (
                     (Platform::Linux, Platform::Linux),
@@ -101,7 +125,7 @@ impl ProcessManager<'_> {
         match self.processes.get_mut(&game_id) {
             Some(process) => {
                 process.manually_killed = true;
-                process.handle.kill()?;
+                kill_process_tree(&process.handle)?;
                 let exit_status = process.handle.wait()?;
                 info!("exit status: {:?}", exit_status);
                 Ok(())
@@ -181,6 +205,18 @@ impl ProcessManager<'_> {
             Some(version_data.clone()),
             status,
         );
+
+        let elapsed_seconds = elapsed.as_secs();
+        if elapsed_seconds > 2 {
+            let playtime_game_id = game_id.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = report_playtime(playtime_game_id.clone(), elapsed_seconds).await
+                {
+                    warn!("failed to report playtime for game {playtime_game_id}: {error}");
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -188,7 +224,21 @@ impl ProcessManager<'_> {
         &self,
         db_lock: &Database,
         target_platform: &Platform,
+        override_id: Option<&str>,
     ) -> Result<&(dyn ProcessHandler + Send + Sync), ProcessError> {
+        // An explicit override wins, as long as it's valid for the current platform.
+        if let Some(override_id) = override_id
+            && let Some(handler) = self.game_launchers.iter().find(|e| {
+                let (e_current, e_target) = e.0;
+                e_current == self.current_platform
+                    && e_target == *target_platform
+                    && e.1.id() == override_id
+                    && e.1.valid_for_platform(db_lock, target_platform)
+            })
+        {
+            return Ok(handler.1);
+        }
+
         Ok(self
             .game_launchers
             .iter()
@@ -204,8 +254,42 @@ impl ProcessManager<'_> {
 
     pub fn valid_platform(&self, platform: &Platform) -> bool {
         let db_lock = borrow_db_checked();
-        let process_handler = self.fetch_process_handler(&db_lock, platform);
+        let process_handler = self.fetch_process_handler(&db_lock, platform, None);
         process_handler.is_ok()
+    }
+
+    pub fn get_process_handlers(
+        &self,
+        game_id: String,
+    ) -> Result<Vec<ProcessHandlerOption>, ProcessError> {
+        let db_lock = borrow_db_checked();
+
+        let meta = db_lock
+            .applications
+            .installed_game_version
+            .get(&game_id)
+            .cloned()
+            .ok_or(ProcessError::NotInstalled)?;
+
+        let target_platform = meta.target_platform;
+
+        let handlers = self
+            .game_launchers
+            .iter()
+            .filter(|e| {
+                let (e_current, e_target) = e.0;
+                e_current == self.current_platform
+                    && e_target == target_platform
+                    && e.1.valid_for_platform(&db_lock, &target_platform)
+            })
+            .map(|e| ProcessHandlerOption {
+                id: e.1.id().to_string(),
+                name: e.1.name().to_string(),
+                description: e.1.description().to_string(),
+            })
+            .collect();
+
+        Ok(handlers)
     }
 
     pub fn get_launch_options(game_id: String) -> Result<Vec<LaunchOption>, ProcessError> {
@@ -310,7 +394,12 @@ impl ProcessManager<'_> {
 
         let target_platform = meta.target_platform;
 
-        let process_handler = self.fetch_process_handler(&db_lock, &target_platform)?;
+        let process_handler = self.fetch_process_handler(
+            &db_lock,
+            &target_platform,
+            game_version.user_configuration.override_handler.as_deref(),
+        )?;
+        debug!("using process handler {:?}", process_handler.id());
 
         let (target_command, emulator) = match game_status {
             GameDownloadStatus::Installed {
@@ -446,6 +535,13 @@ impl ProcessManager<'_> {
             install_dir.into(),
         );
 
+        let mut launch_parameters = launch_parameters;
+        launch_parameters
+            .0
+            .make_command_absolute_if_local(&launch_parameters.1);
+
+        launch_parameters.0.ensure_executable()?;
+
         info!(
             "launching (in {}): {:?}",
             launch_parameters.1.to_string_lossy(),
@@ -516,6 +612,30 @@ impl ProcessManager<'_> {
     }
 }
 
+fn kill_process_tree(handle: &SharedChild) -> io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        // handle.kill() only terminates the launched process (often a cmd or
+        // powershell wrapper), orphaning the actual game. taskkill /T kills the
+        // whole process tree.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let pid = handle.id().to_string();
+        let killed = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", pid.as_str()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if killed {
+            return Ok(());
+        }
+    }
+    handle.kill()
+}
+
 pub trait ProcessHandler: Send + 'static {
     fn create_launch_process(
         &self,
@@ -529,4 +649,8 @@ pub trait ProcessHandler: Send + 'static {
     fn valid_for_platform(&self, db: &Database, target: &Platform) -> bool;
 
     fn modify_command(&self, command: &mut Command);
+
+    fn id(&self) -> &'static str;
+    fn name(&self) -> &'static str;
+    fn description(&self) -> &'static str;
 }

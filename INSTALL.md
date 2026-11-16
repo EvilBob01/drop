@@ -243,6 +243,11 @@ EXTERNAL_URL="https://yourdomain.com"
 PORT=4000
 TORRENTIAL_PATH=/usr/local/bin/torrential
 
+# PCGamingWiki metadata (required since upstream #509) — create a bot password at
+# https://www.pcgamingwiki.com/wiki/Special:BotPasswords
+PCGAMINGWIKI_BOT_USERNAME=""
+PCGAMINGWIKI_BOT_PASSWORD=""
+
 # Optional — IGDB metadata (requires free Twitch Developer account)
 # Get keys at https://dev.twitch.tv/console
 IGDB_CLIENT_ID=""

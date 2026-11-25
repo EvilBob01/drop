@@ -2,7 +2,8 @@
 
 # Pinned to bookworm so the glibc here matches the torrential build stage
 # and the libarchive runtime package is named `libarchive13` (trixie renames it to libarchive13t64).
-FROM node:lts-bookworm-slim AS base
+# Pinned to Node 24: node:lts now resolves to Node 26, which no longer bundles corepack.
+FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable

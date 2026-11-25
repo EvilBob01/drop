@@ -28,6 +28,8 @@ concurrency: "pages"
 
 jobs:
   build:
+    # droposs.org site deploy; forks have no Pages site configured
+    if: github.repository == 'Drop-OSS/drop'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

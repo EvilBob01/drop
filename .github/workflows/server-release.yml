@@ -21,6 +21,8 @@ jobs:
             runner: ubuntu-latest
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
+    # Nightly Docker images are published by upstream only; forks build on release/manual dispatch
+    if: github.event_name != 'schedule' || github.repository == 'Drop-OSS/drop'
     runs-on: ${{ matrix.runner }}
     permissions:
       packages: write

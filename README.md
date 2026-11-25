@@ -64,7 +64,7 @@ Then open `http://localhost:3000` to complete first-run setup.
 See **[INSTALL.md](INSTALL.md)** for the full step-by-step guide covering:
 
 - Proxmox LXC container setup
-- Node.js 22, Rust nightly, PostgreSQL 17
+- Node.js 24, Rust nightly, PostgreSQL 17
 - Building Torrential (Rust P2P daemon) from source
 - Building the Nuxt server with Tailwind CSS pre-generation
 - Systemd service, nginx reverse proxy, Let's Encrypt SSL

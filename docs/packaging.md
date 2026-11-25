@@ -30,8 +30,8 @@ Run the build on a Debian 12/13 amd64 machine with:
 # Build tools
 apt-get install -y dpkg-dev fakeroot build-essential
 
-# Node.js 22
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+# Node.js 24
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y nodejs
 corepack enable && corepack prepare pnpm@9 --activate
 

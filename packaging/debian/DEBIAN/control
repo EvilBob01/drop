@@ -3,7 +3,7 @@ Version: 0.4.0-360pc1
 Section: games
 Priority: optional
 Architecture: amd64
-Depends: nodejs (>= 22), postgresql (>= 15), nginx, curl
+Depends: nodejs (>= 24), postgresql (>= 15), nginx, curl
 Recommends: tailscale
 Maintainer: EvilBob <spam3@360pc.com>
 Description: Drop OSS — self-hosted DRM-free game distribution platform

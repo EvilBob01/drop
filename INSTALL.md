@@ -16,7 +16,7 @@ reference for a clean rebuild from scratch.
 | CPU | 2 cores | 4+ cores |
 | RAM | 4 GB | 6 GB+ |
 | Disk (OS + app) | 20 GB | 40 GB |
-| Node.js | 22.16.0 | latest LTS 22.x |
+| Node.js | 24.0.0 | latest 24.x |
 | PostgreSQL | 15 | 17 |
 | Rust toolchain | nightly | nightly |
 
@@ -70,10 +70,10 @@ apt-get install -y \
 
 ---
 
-## 3. Node.js 22
+## 3. Node.js 24
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y nodejs
 
 # Enable pnpm via corepack (no separate install needed)
@@ -83,7 +83,7 @@ corepack prepare pnpm@9 --activate
 
 Verify:
 ```bash
-node --version   # v22.x.x
+node --version   # v24.x.x
 pnpm --version   # 9.x.x
 ```
 

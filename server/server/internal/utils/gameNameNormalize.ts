@@ -75,7 +75,9 @@ function bracketContentIsGroup(inner: string): boolean {
 // Matches at end of string only.
 const TRAILING_GROUP_RE = new RegExp(
   `-\\s*(?:${[...RELEASE_GROUPS]
-    .map((g) => g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*"))
+    .map((g) =>
+      g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*"),
+    )
     .join("|")}|repack|rip)\\s*$`,
   "gi",
 );
